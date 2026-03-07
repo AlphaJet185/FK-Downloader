@@ -1,0 +1,7 @@
+{
+  "name": "FK Downloader",
+  "description": "A web-based YouTube downloader and Shazam-like music recognizer.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
