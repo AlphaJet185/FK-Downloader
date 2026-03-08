@@ -4,7 +4,9 @@ import path from 'path';
 import os from 'os';
 
 // path to our bundled yt-dlp binary (Linux build)
-const binPath = path.join(process.cwd(), 'bin', 'yt-dlp');
+// when running on Vercel the current working directory may not
+// be the repository root, so resolve relative to this file's location.
+const binPath = path.resolve(__dirname, '..', 'bin', 'yt-dlp');
 
 const isLocal = os.platform() === 'win32' || os.platform() === 'darwin' || process.env.USE_BROWSER_COOKIES === 'true';
 let workingCookieStrategy: any = null;
