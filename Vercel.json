@@ -8,8 +8,5 @@
     { "src": "/api/(.*)", "dest": "/api/$1.ts" },
     { "src": "/", "dest": "/index.html" },
     { "src": "/(.*)", "dest": "/$1" }
-  ],
-  "env": {
-    "NPM_CONFIG_PRODUCTION": "false"
-  }
+  ]
 }
