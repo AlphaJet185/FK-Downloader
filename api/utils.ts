@@ -2,10 +2,12 @@ import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'url';
 
-// path to our bundled yt-dlp binary (Linux build)
-// when running on Vercel the current working directory may not
-// be the repository root, so resolve relative to this file's location.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// path to our bundled yt-dlp binary
 const binPath = path.resolve(__dirname, '..', 'bin', 'yt-dlp');
 
 const isLocal = os.platform() === 'win32' || os.platform() === 'darwin' || process.env.USE_BROWSER_COOKIES === 'true';
