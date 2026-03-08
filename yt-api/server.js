@@ -1,13 +1,15 @@
 import express from "express";
 import cors from "cors";
 import axios from "axios";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
 
 app.use(cors());
 app.use(express.static("public"));
 
-const API_KEY = "AIzaSyB5tmdlHCRUcWhkyhY0bzfIAcm1bjUJMw8";
+const API_KEY = process.env.YOUTUBE_API_KEY;
 
 app.get("/video-info", async (req, res) => {
 
