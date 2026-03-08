@@ -7,21 +7,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const info: any = await executeYtDlp(url, { dumpJson: true, skipDownload: true });
-    const title = info.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const formats = info.formats || [];
 
-    let formatId = itag as string;
-    let ext = 'mp4';
-    if (!formatId) {
-      if (type === 'audio') { formatId = 'bestaudio'; ext = 'webm'; } 
-      else { formatId = 'best'; }
+    let selected = formats.find((f: any) => f.format_id === itag);
+    if (!selected) {
+      selected = type === 'audio'
+        ? formats.find((f: any) => f.vcodec === 'none')
+        : formats.find((f: any) => f.vcodec !== 'none');
     }
 
-    res.setHeader('Content-Disposition', `attachment; filename="${title}.${ext}"`);
-    const dlProcess = await executeYtDlp(url, { format: formatId }, true);
-    dlProcess.stdout?.pipe(res);
-    dlProcess.on('error', (err: any) => { console.error(err); if (!res.headersSent) res.status(500).send('Download failed'); });
+    if (!selected) return res.status(404).send('Format not found');
+
+    res.json({ downloadUrl: selected.url, title: info.title });
   } catch (error) {
     console.error(error);
-    if (!res.headersSent) res.status(500).send('Download failed');
+    res.status(500).send('Download failed');
   }
 }

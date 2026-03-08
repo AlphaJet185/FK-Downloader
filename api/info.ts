@@ -15,7 +15,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       hasVideo: f.vcodec !== 'none',
       hasAudio: f.acodec !== 'none',
       contentLength: f.filesize ? (f.filesize / (1024 * 1024)).toFixed(2) + 'M' : 'Unknown',
-      url: f.url,
+      url: f.url
     }));
 
     res.json({
@@ -23,10 +23,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       title: info.title,
       channel: info.uploader,
       duration: info.duration,
-      audioFormats: formats.filter(f => !f.hasVideo && f.hasAudio).sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0)),
-      videoFormats: formats.filter(f => f.hasVideo).sort((a, b) => parseInt(b.qualityLabel) - parseInt(a.qualityLabel)),
+      audioFormats: formats.filter(f => !f.hasVideo && f.hasAudio).sort((a,b) => (b.bitrate||0)-(a.bitrate||0)),
+      videoFormats: formats.filter(f => f.hasVideo).sort((a,b) => parseInt(b.qualityLabel)-parseInt(a.qualityLabel)),
       thumbnail: info.thumbnail || info.thumbnails?.[0]?.url,
-      url: info.webpage_url,
+      url: info.webpage_url
     });
   } catch (error: any) {
     console.error(error);

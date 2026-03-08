@@ -4,11 +4,9 @@ import fs from 'fs';
 import axios from 'axios';
 import FormData from 'form-data';
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: '/tmp' });
 
-export const config = {
-  api: { bodyParser: false },
-};
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   upload.single('audio')(req as any, res as any, async (err: any) => {
