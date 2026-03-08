@@ -49,8 +49,15 @@ export async function executeYtDlp(url: string, extraArgs: any = {}, isDownload 
       return result;
     } catch (error: any) {
       lastError = error;
-      const msg = error.message || String(error);
-      if (msg.includes('Sign in') || msg.includes('cookies') || msg.includes('Authentication')) {
+      const msg = (error.message || String(error)).toLowerCase();
+      // ignore failures that look like authentication or cookie errors so we can
+      // try the next strategy/fallback. yt-dlp sometimes complains about the
+      // Chrome cookie database even when we're not explicitly using it.
+      if (
+        msg.includes('sign in') ||
+        msg.includes('authentication') ||
+        msg.includes('cookie') // matches "cookie database" / "cookies"
+      ) {
         workingCookieStrategy = null;
         continue;
       }

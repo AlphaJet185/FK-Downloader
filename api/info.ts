@@ -29,7 +29,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       url: info.webpage_url
     });
   } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ error: error.message || 'Failed to fetch video details' });
+    console.error('info handler error:', error);
+    // return the raw message (or the full error string) so the client can show it
+    const msg = error?.message || String(error) || 'Failed to fetch video details';
+    res.status(500).json({ error: msg });
   }
 }
