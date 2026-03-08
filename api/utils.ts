@@ -1,12 +1,60 @@
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore - package has no callable types
-import youtubedl from 'youtube-dl-exec';
+import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+// path to our bundled yt-dlp binary (Linux build)
+const binPath = path.join(process.cwd(), 'bin', 'yt-dlp');
+
 const isLocal = os.platform() === 'win32' || os.platform() === 'darwin' || process.env.USE_BROWSER_COOKIES === 'true';
 let workingCookieStrategy: any = null;
+
+function ensureBinary() {
+  if (!fs.existsSync(binPath)) {
+    throw new Error('yt-dlp binary not found at ' + binPath);
+  }
+  // make sure executable bit is set
+  try {
+    fs.chmodSync(binPath, 0o755);
+  } catch {}
+}
+
+function objectToArgs(obj: any): string[] {
+  const arr: string[] = [];
+  for (const [k, v] of Object.entries(obj)) {
+    const flag = '--' + k.replace(/[A-Z]/g, m => '-' + m.toLowerCase());
+    if (typeof v === 'boolean') {
+      if (v) arr.push(flag);
+    } else if (Array.isArray(v)) {
+      for (const item of v) {
+        arr.push(flag, String(item));
+      }
+    } else {
+      arr.push(flag, String(v));
+    }
+  }
+  return arr;
+}
+
+function runYtdlp(url: string, args: any): Promise<any> {
+  ensureBinary();
+  const cliArgs = [...objectToArgs(args), url];
+  return new Promise((resolve, reject) => {
+    execFile(binPath, cliArgs, { maxBuffer: 50 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        err.stdout = stdout;
+        err.stderr = stderr;
+        return reject(err);
+      }
+      try {
+        const r = JSON.parse(stdout);
+        resolve(r);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  });
+}
 
 export const getBaseArgs = () => ({
   noPlaylist: true,
@@ -44,19 +92,16 @@ export async function executeYtDlp(url: string, extraArgs: any = {}, isDownload 
   for (const strategy of uniqueStrategies) {
     try {
       const args = { ...getBaseArgs(), ...extraArgs, ...strategy };
-      const result = await (youtubedl as any)(url, args);
+      const result = await runYtdlp(url, args);
       workingCookieStrategy = strategy;
       return result;
     } catch (error: any) {
       lastError = error;
       const msg = (error.message || String(error)).toLowerCase();
-      // ignore failures that look like authentication or cookie errors so we can
-      // try the next strategy/fallback. yt-dlp sometimes complains about the
-      // Chrome cookie database even when we're not explicitly using it.
       if (
         msg.includes('sign in') ||
         msg.includes('authentication') ||
-        msg.includes('cookie') // matches "cookie database" / "cookies"
+        msg.includes('cookie')
       ) {
         workingCookieStrategy = null;
         continue;
