@@ -29,8 +29,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       url: info.webpage_url
     });
   } catch (error: any) {
-    console.error('info handler error:', error);
-    const msg = error?.message || String(error) || 'Failed to fetch video details';
+    // log full object and stack for debugging
+    console.error('info handler error object:', error);
+    console.error('info handler stack:', error?.stack);
+    let msg = 'Failed to fetch video details';
+    try {
+      if (error && typeof error === 'object') msg = JSON.stringify(error);
+    } catch {
+      msg = String(error);
+    }
     res.status(500).json({ error: msg });
   }
 }
