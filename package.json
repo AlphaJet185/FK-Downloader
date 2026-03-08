@@ -28,7 +28,6 @@
     "ts-node": "^10.9.2",
     "typescript": "~5.8.2"
   },
-
   "resolutions": {
     "ajv": "^8.12.0",
     "css-what": "^5.0.1",
