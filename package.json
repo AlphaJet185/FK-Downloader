@@ -23,11 +23,14 @@
     "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.2.1",
     "@types/cors": "^2.8.19",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.1.4",
     "ts-node": "^10.9.2",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vite": "^7.3.1"
   },
   "resolutions": {
     "ajv": "^8.12.0",
