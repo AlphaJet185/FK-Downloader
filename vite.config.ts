@@ -1,2 +1,9 @@
 import { defineConfig } from 'vite';
-export default defineConfig(require('./config/vite.config.ts').default);
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    outDir: 'dist',
+  },
+});
