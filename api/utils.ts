@@ -1,3 +1,5 @@
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore - package has no callable types
 import youtubedl from 'youtube-dl-exec';
 import fs from 'fs';
 import path from 'path';
@@ -42,7 +44,7 @@ export async function executeYtDlp(url: string, extraArgs: any = {}, isDownload 
   for (const strategy of uniqueStrategies) {
     try {
       const args = { ...getBaseArgs(), ...extraArgs, ...strategy };
-      const result = await youtubedl(url, args);
+      const result = await (youtubedl as any)(url, args);
       workingCookieStrategy = strategy;
       return result;
     } catch (error: any) {
