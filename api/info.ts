@@ -1,12 +1,23 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { executeYtDlp } from './utils.js';
+import fs from 'fs';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // ✅ Check Gemini API key
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (!geminiKey) {
+    return res.status(500).json({ error: "GEMINI_API_KEY missing" });
+  }
+
   const { url } = req.query;
-  if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL required' });
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: "URL required" });
+  }
 
   try {
+    // ⚡ yt-dlp info only
     const info: any = await executeYtDlp(url, { dumpJson: true, skipDownload: true });
+
     const formats = (info.formats || []).map((f: any) => ({
       itag: f.format_id,
       qualityLabel: f.format_note || f.resolution || (f.vcodec !== 'none' ? 'Video' : 'Audio'),
@@ -28,16 +39,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       thumbnail: info.thumbnail || info.thumbnails?.[0]?.url,
       url: info.webpage_url
     });
+
   } catch (error: any) {
-    // log full object and stack for debugging
-    console.error('info handler error object:', error);
-    console.error('info handler stack:', error?.stack);
-    let msg = 'Failed to fetch video details';
-    try {
-      if (error && typeof error === 'object') msg = JSON.stringify(error);
-    } catch {
-      msg = String(error);
-    }
-    res.status(500).json({ error: msg });
+    console.error('Handler error:', error);
+    res.status(500).json({ error: 'Failed to fetch video details' });
   }
 }
