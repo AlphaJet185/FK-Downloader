@@ -63,5 +63,9 @@
   "bugs": {
     "url": "https://github.com/AlphaJet185/FK-Downloader/issues"
   },
+  "engines": {
+  "node": "18.x"
+  },
+
   "homepage": "https://github.com/AlphaJet185/FK-Downloader#readme"
 }
