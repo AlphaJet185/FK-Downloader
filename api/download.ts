@@ -1,37 +1,42 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import ytdl from 'ytdl-core';
-
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const { url, type, itag } = req.query;
-  if (!url || typeof url !== 'string') return res.status(400).send('URL required');
-  if (!ytdl.validateURL(url)) return res.status(400).send('Invalid YouTube URL');
-
+// download.ts (frontend)
+export async function downloadVideo(url: string, type: string = 'video', itag?: string) {
   try {
-    const info = await ytdl.getInfo(url);
-    const formats = info.formats;
+    // Build the serverless function URL
+    const apiUrl = `/api/download?url=${encodeURIComponent(url)}${type ? `&type=${type}` : ''}${itag ? `&itag=${itag}` : ''}`;
 
-    const itagStr = typeof itag === 'string' ? itag : '';
-    const kind = typeof type === 'string' ? type : ''; // could be 'audio' or 'video'
+    // Fetch the serverless function to get the streamed video
+    const res = await fetch(apiUrl);
 
-    let selected = itagStr
-      ? formats.find((f: any) => f.itag.toString() === itagStr)
-      : null;
-    if (!selected) {
-      if (kind === 'audio') {
-        selected = formats.find((f: any) => !f.hasVideo && f.hasAudio);
-      } else if (kind === 'video') {
-        selected = formats.find((f: any) => f.hasVideo);
-      } else {
-        // default to highest quality video
-        selected = formats.find((f: any) => f.hasVideo) || formats[0];
-      }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || 'Download failed');
     }
 
-    if (!selected) return res.status(404).send('Format not found');
+    // Convert the response to a blob
+    const blob = await res.blob();
 
-    res.json({ downloadUrl: selected.url, title: info.videoDetails.title });
-  } catch (error) {
-    console.error('download handler error:', error);
-    res.status(500).send('Download failed');
+    // Create a temporary link and click it to start download
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+
+    // Extract filename from content-disposition or fallback
+    const disposition = res.headers.get('Content-Disposition');
+    let filename = 'video.mp4';
+    if (disposition && disposition.includes('filename=')) {
+      filename = disposition.split('filename=')[1].replace(/"/g, '');
+    }
+    a.download = filename;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(downloadUrl);
+
+    console.log('Download started:', filename);
+  } catch (err: any) {
+    console.error('Download error:', err);
+    alert(`Download failed: ${err.message}`);
   }
 }
+
