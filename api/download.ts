@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { url, type, itag } = req.query;
