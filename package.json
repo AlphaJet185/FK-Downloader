@@ -26,6 +26,7 @@
     "multer": "^2.0.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "youtube-dl-exec": "^3.1.4",
     "yt-search": "^2.13.1"
   },
   "devDependencies": {
@@ -64,8 +65,7 @@
     "url": "https://github.com/AlphaJet185/FK-Downloader/issues"
   },
   "engines": {
-  "node": "18.x"
+    "node": "18.x"
   },
-
   "homepage": "https://github.com/AlphaJet185/FK-Downloader#readme"
 }
