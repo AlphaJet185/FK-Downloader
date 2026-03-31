@@ -3,9 +3,7 @@ import yts from 'yt-search';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { q } = req.query;
-  if (!q || typeof q !== 'string') {
-    return res.status(400).json({ error: 'Query required' });
-  }
+  if (!q || typeof q !== 'string') return res.status(400).json({ error: 'Query required' });
 
   try {
     const result = await yts(q);
@@ -18,8 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       url: v.url || ''
     }));
     res.json(videos);
-  } catch (error) {
-    console.error('search error', error);
+  } catch (err) {
+    console.error('search error', err);
     res.status(500).json({ error: 'Search failed' });
   }
 }

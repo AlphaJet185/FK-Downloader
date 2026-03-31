@@ -14,25 +14,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const itagStr = typeof itag === 'string' ? itag : '';
     const kind = typeof type === 'string' ? type : '';
 
-    if (itagStr) {
-      selected = formats.find((f: any) => f.itag.toString() === itagStr);
-    }
+    if (itagStr) selected = formats.find((f: any) => f.itag.toString() === itagStr);
     if (!selected) {
       if (kind === 'audio') selected = formats.find((f: any) => !f.hasVideo && f.hasAudio);
       else if (kind === 'video') selected = formats.find((f: any) => f.hasVideo);
       else selected = formats.find((f: any) => f.hasVideo) || formats[0];
     }
+
     if (!selected) return res.status(404).send('Format not found');
 
-    // Set headers
+    // Stream directly to avoid 410
     res.setHeader('Content-Disposition', `attachment; filename="${info.videoDetails.title}.mp4"`);
     res.setHeader('Content-Type', 'video/mp4');
 
-    // Stream the video through the server
-    ytdl(url, { quality: selected.itag }).pipe(res);
-
-  } catch (error) {
-    console.error('download handler error:', error);
+    const stream = ytdl(url, { quality: selected.itag });
+    stream.pipe(res);
+    stream.on('error', (err) => {
+      console.error('Streaming error:', err);
+      res.status(500).send('Download failed during streaming');
+    });
+  } catch (err) {
+    console.error('Download handler error:', err);
     res.status(500).send('Download failed');
   }
 }

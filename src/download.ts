@@ -25,8 +25,6 @@ export async function downloadVideo(url: string, type: string = 'video', itag?: 
     a.click();
     a.remove();
     URL.revokeObjectURL(downloadUrl);
-
-    console.log('Download started:', filename);
   } catch (err: any) {
     console.error('Download error:', err);
     alert(`Download failed: ${err.message}`);
