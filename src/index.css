@@ -1,7 +1,5 @@
-/* Tailwind directives */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind import */
+@import "tailwindcss";
 
 /* Your project-specific styles */
 body {
