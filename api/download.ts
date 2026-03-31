@@ -7,9 +7,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!ytdl.validateURL(url)) return res.status(400).send('Invalid YouTube URL');
 
   try {
-    const info = await ytdl.getInfo(url);
-    const formats = info.formats;
+    const info = await ytdl.getInfo(url, {
+      requestOptions: {
+        headers: {
+          // Realistic browser headers help avoid 410 errors
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      }
+    });
 
+    const formats = info.formats;
     let selected: any = null;
     const itagStr = typeof itag === 'string' ? itag : '';
     const kind = typeof type === 'string' ? type : '';
@@ -27,7 +35,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Disposition', `attachment; filename="${info.videoDetails.title}.mp4"`);
     res.setHeader('Content-Type', 'video/mp4');
 
-    const stream = ytdl(url, { quality: selected.itag });
+    const stream = ytdl(url, {
+      quality: selected.itag,
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      }
+    });
+
     stream.pipe(res);
     stream.on('error', (err) => {
       console.error('Streaming error:', err);
