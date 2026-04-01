@@ -32,7 +32,7 @@ function formatDuration(seconds: number) {
 }
 
 function fallbackThumbnail(videoId: string) {
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  return `/api/thumb?id=${encodeURIComponent(videoId)}`;
 }
 
 export default function App() {

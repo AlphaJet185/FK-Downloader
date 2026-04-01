@@ -3,7 +3,7 @@ import yts from 'yt-search';
 
 function getStableThumbnail(videoId: string, fallback?: string) {
   if (!videoId) return fallback || '';
-  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  return `/api/thumb?id=${encodeURIComponent(videoId)}`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
