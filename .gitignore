@@ -1,4 +1,5 @@
 .vercel
+.vercel/output
 .env
 .env.local
 .env.*
