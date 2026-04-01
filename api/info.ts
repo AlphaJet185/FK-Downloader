@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import ytdl from '@distube/ytdl-core';
+import youtubedl from 'youtube-dl-exec';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
 
@@ -9,40 +9,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: "URL required" });
   }
 
-  if (!ytdl.validateURL(url)) {
-    return res.status(400).json({ error: "Invalid YouTube URL" });
-  }
-
   try {
-
-    const info = await ytdl.getInfo(url, {
-      requestOptions: {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-          "Accept-Language": "en-US,en;q=0.9"
-        }
-      }
+    const info = await youtubedl(url, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      preferFreeFormats: true
     });
 
-    const formats = info.formats.map((f: any) => ({
-      itag: f.itag,
-      qualityLabel: f.qualityLabel || f.quality || (f.hasVideo ? "Video" : "Audio"),
-      bitrate: f.bitrate,
-      mimeType: f.mimeType,
-      hasVideo: f.hasVideo,
-      hasAudio: f.hasAudio,
-      contentLength: f.contentLength
-        ? (parseInt(f.contentLength) / (1024 * 1024)).toFixed(2) + "M"
+    if (typeof info === 'string') {
+      throw new Error('yt-dlp returned an unexpected string payload');
+    }
+
+    const formats = (info.formats || []).map((f: any) => ({
+      itag: f.format_id,
+      qualityLabel: f.format_note || f.format || (f.vcodec !== 'none' ? "Video" : "Audio"),
+      bitrate: f.tbr || f.vbr || f.abr || 0,
+      mimeType: f.ext ? `${f.vcodec !== 'none' ? 'video' : 'audio'}/${f.ext}` : undefined,
+      hasVideo: f.vcodec !== 'none',
+      hasAudio: f.acodec !== 'none',
+      contentLength: f.filesize || f.filesize_approx
+        ? ((Number(f.filesize || f.filesize_approx) / (1024 * 1024)).toFixed(2) + "M")
         : "Unknown",
       url: f.url
     }));
 
     res.json({
-      id: info.videoDetails.videoId,
-      title: info.videoDetails.title,
-      channel: info.videoDetails.author.name,
-      duration: parseInt(info.videoDetails.lengthSeconds),
+      id: info.id,
+      title: info.title,
+      channel: info.channel || info.uploader || '',
+      duration: Number(info.duration || 0),
 
       audioFormats: formats
         .filter(f => !f.hasVideo && f.hasAudio)
@@ -56,16 +51,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return bRes - aRes;
         }),
 
-      thumbnail: info.videoDetails.thumbnails.at(-1)?.url,
+      thumbnail: info.thumbnails?.at(-1)?.url || info.thumbnail,
 
-      url: info.videoDetails.video_url
+      url: info.webpage_url || info.original_url || url
     });
 
   } catch (error: any) {
     console.error("API error:", error);
 
     res.status(500).json({
-      error: "YouTube blocked the request. Try another video."
+      error: error?.message || "Failed to fetch video details"
     });
   }
 }

@@ -1,4 +1,4 @@
-import { executeYtDlp } from './api/utils.ts';
+import { executeYtDlp } from '../api/utils.ts';
 
 console.log('running tests');
 
