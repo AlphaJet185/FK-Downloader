@@ -40,7 +40,6 @@ function App() {
   const [results, setResults] = useState<SearchVideo[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<VideoInfo | null>(null);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [loadingInfo, setLoadingInfo] = useState(false);
   const [error, setError] = useState("");
 
   const searchVideos = async (nextQuery: string) => {
@@ -80,27 +79,17 @@ function App() {
   };
 
   const loadVideoInfo = async (video: SearchVideo) => {
-    setLoadingInfo(true);
     setError("");
-
-    try {
-      const res = await fetch(`/api/info?url=${encodeURIComponent(video.url)}`);
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to load video details");
-      }
-
-      setSelectedVideo({
-        ...data,
-        thumbnail: data.thumbnail || video.thumbnail || fallbackThumbnail(video.id),
-      });
-    } catch (err: any) {
-      setSelectedVideo(null);
-      setError(err?.message || "Failed to load video details");
-    } finally {
-      setLoadingInfo(false);
-    }
+    setSelectedVideo({
+      id: video.id,
+      title: video.title,
+      channel: video.channel,
+      duration: video.duration,
+      thumbnail: video.thumbnail || fallbackThumbnail(video.id),
+      url: video.url,
+      audioFormats: [],
+      videoFormats: [],
+    });
   };
 
   return (
@@ -121,7 +110,6 @@ function App() {
 
       {error ? <p className="mt-4 text-red-300">{error}</p> : null}
       {loadingSearch ? <p className="mt-4 text-emerald-100">Searching...</p> : null}
-      {loadingInfo ? <p className="mt-2 text-emerald-100">Loading video details...</p> : null}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="grid gap-4">
@@ -173,8 +161,7 @@ function App() {
                 Duration: {formatDuration(selectedVideo.duration)}
               </p>
               <p className="mt-4 text-sm text-emerald-100">
-                Video formats: {selectedVideo.videoFormats?.length || 0} | Audio formats:{" "}
-                {selectedVideo.audioFormats?.length || 0}
+                Video formats are loaded at download time to avoid extractor errors in production.
               </p>
               <button
                 type="button"
