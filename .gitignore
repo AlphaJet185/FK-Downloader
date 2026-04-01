@@ -4,5 +4,7 @@
 .env.local
 .env.*
 dist
+/Public/assets
+/Public/index.html
 node_modules
 package-lock.json
