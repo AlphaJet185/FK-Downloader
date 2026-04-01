@@ -65,7 +65,7 @@
     "url": "https://github.com/AlphaJet185/FK-Downloader/issues"
   },
   "engines": {
-    "node": "18.x"
+    "node": "24.x"
   },
   "homepage": "https://github.com/AlphaJet185/FK-Downloader#readme"
 }
