@@ -1,185 +1,389 @@
-import React, { useState } from "react";
-import { downloadVideo } from "./download";
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  Loader2,
+  MessageSquare,
+  Music,
+  Radio,
+  Search,
+  UploadCloud,
+  Wifi,
+  WifiOff
+} from 'lucide-react';
+import { FeedbackModal } from './Components/FeedbackModal';
 
-type SearchVideo = {
+interface SearchResult {
   id: string;
   title: string;
   channel: string;
   duration: number;
   thumbnail: string;
   url: string;
-};
+}
 
-type VideoInfo = {
-  id: string;
-  title: string;
-  channel: string;
-  duration: number;
-  thumbnail?: string;
-  url: string;
-  audioFormats?: Array<{ itag: string; qualityLabel: string }>;
-  videoFormats?: Array<{ itag: string; qualityLabel: string }>;
-};
+type SelectedVideo = SearchResult;
 
 function formatDuration(seconds: number) {
-  if (!seconds) return "Unknown";
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
-    : `${minutes}:${String(secs).padStart(2, "0")}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 function fallbackThumbnail(videoId: string) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-function App() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchVideo[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<VideoInfo | null>(null);
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [error, setError] = useState("");
+export default function App() {
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isDragging, setIsDragging] = useState(false);
+  const [status, setStatus] = useState('Idle');
+  const [error, setError] = useState('');
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
-  const searchVideos = async (nextQuery: string) => {
-    const trimmedQuery = nextQuery.trim();
-    setQuery(nextQuery);
+  const suggestTimeoutRef = useRef<number | null>(null);
 
-    if (!trimmedQuery) {
-      setResults([]);
-      setSelectedVideo(null);
-      setError("");
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setSuggestions([]);
       return;
     }
 
-    setLoadingSearch(true);
-    setError("");
+    if (suggestTimeoutRef.current) {
+      window.clearTimeout(suggestTimeoutRef.current);
+    }
+
+    suggestTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 250);
+
+    return () => {
+      if (suggestTimeoutRef.current) {
+        window.clearTimeout(suggestTimeoutRef.current);
+      }
+    };
+  }, [query]);
+
+  const handleSearch = async (searchQuery: string = query) => {
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) return;
+
+    setIsSearching(true);
+    setShowSuggestions(false);
+    setSelectedVideo(null);
+    setError('');
+    setStatus('Searching');
 
     try {
       const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
-      const data = await res.json();
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : [];
 
       if (!res.ok) {
-        throw new Error(data?.error || "Search failed");
+        throw new Error(data?.error || 'Search failed');
       }
 
-      const normalizedResults = (data as SearchVideo[]).map((video) => ({
-        ...video,
-        thumbnail: video.thumbnail || fallbackThumbnail(video.id),
+      const normalized = (data as SearchResult[]).map((result) => ({
+        ...result,
+        thumbnail: result.thumbnail || fallbackThumbnail(result.id)
       }));
 
-      setResults(normalizedResults);
+      setResults(normalized);
+      setStatus('Idle');
     } catch (err: any) {
       setResults([]);
-      setError(err?.message || "Search failed");
+      setStatus('Idle');
+      setError(err?.message || 'Failed to search YouTube.');
     } finally {
-      setLoadingSearch(false);
+      setIsSearching(false);
     }
   };
 
-  const loadVideoInfo = async (video: SearchVideo) => {
-    setError("");
+  const handleVideoClick = (video: SearchResult) => {
     setSelectedVideo({
-      id: video.id,
-      title: video.title,
-      channel: video.channel,
-      duration: video.duration,
-      thumbnail: video.thumbnail || fallbackThumbnail(video.id),
-      url: video.url,
-      audioFormats: [],
-      videoFormats: [],
+      ...video,
+      thumbnail: video.thumbnail || fallbackThumbnail(video.id)
     });
+    setError('');
+  };
+
+  const openVideo = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyVideoLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setStatus('Link copied');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    } catch {
+      setStatus('Copy failed');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const text = e.dataTransfer.getData('text');
+    if (text) {
+      setQuery(text);
+      void handleSearch(text);
+    }
   };
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">FK Downloader</h1>
-        <p className="mt-2 text-emerald-100">
-          Search for a video, preview its details, then download it.
-        </p>
-      </div>
+    <div
+      className={`min-h-screen bg-gradient-to-br from-emerald-950 via-zinc-950 to-emerald-900 text-emerald-50 p-6 transition-colors ${
+        isDragging ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-900/20' : ''
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm pointer-events-none">
+          <div className="text-center text-emerald-400 animate-pulse">
+            <UploadCloud className="mx-auto mb-4 h-24 w-24" />
+            <h2 className="text-3xl font-bold">Drop a URL to search</h2>
+          </div>
+        </div>
+      )}
 
-      <input
-        className="w-full rounded border border-emerald-700 bg-emerald-50 p-3 text-black outline-none"
-        placeholder="Search videos..."
-        value={query}
-        onChange={(e) => void searchVideos(e.target.value)}
-      />
+      <div className="relative z-10 mx-auto max-w-4xl space-y-8">
+        <div className="space-y-2 text-center">
+          <h1 className="flex items-center justify-center gap-3 pt-2 text-3xl font-bold text-emerald-400 sm:pt-0 sm:text-4xl">
+            <Download className="h-8 w-8 sm:h-10 sm:w-10" />
+            FK Downloader
+          </h1>
+          <p className="text-sm text-emerald-200/60 sm:text-base">
+            Search, preview, and open videos without extractor failures.
+          </p>
 
-      {error ? <p className="mt-4 text-red-300">{error}</p> : null}
-      {loadingSearch ? <p className="mt-4 text-emerald-100">Searching...</p> : null}
-
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="grid gap-4">
-          {results.map((video) => (
-            <button
-              key={video.id}
-              type="button"
-              onClick={() => void loadVideoInfo(video)}
-              className="flex items-start gap-4 rounded border border-emerald-800 bg-emerald-900/60 p-4 text-left transition hover:border-emerald-500"
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium sm:gap-4 sm:text-sm">
+            <div
+              className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
+                isOffline
+                  ? 'border-red-500/50 bg-red-900/30 text-red-400'
+                  : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-400'
+              }`}
             >
-              <img
-                src={video.thumbnail || fallbackThumbnail(video.id)}
-                alt={video.title}
-                width={160}
-                className="rounded object-cover"
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  const fallback = fallbackThumbnail(video.id);
-                  if (target.src !== fallback) {
-                    target.src = fallback;
+              {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
+              {isOffline ? 'Offline Mode' : 'Online Mode'}
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-emerald-800/50 bg-zinc-900/50 px-3 py-1 text-emerald-300">
+              <Radio className="h-4 w-4" />
+              Status: {status}
+            </div>
+          </div>
+        </div>
+
+        <div className="relative z-10">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    void handleSearch();
                   }
                 }}
+                placeholder="Paste YouTube URL or search for a video..."
+                className="w-full rounded-xl border border-emerald-800/50 bg-zinc-900 px-4 py-3 pl-11 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
               />
-              <div className="min-w-0">
-                <h2 className="line-clamp-2 text-lg font-semibold">{video.title}</h2>
-                <p className="mt-1 text-sm text-emerald-100">{video.channel}</p>
-                <p className="mt-2 text-xs text-emerald-200">
-                  Duration: {formatDuration(video.duration)}
-                </p>
-              </div>
+              <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-600" />
+
+              {showSuggestions && suggestions.length > 0 && (
+                <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-emerald-800/50 bg-zinc-900 shadow-2xl">
+                  {suggestions.map((suggestion, index) => (
+                    <li
+                      key={`${suggestion}-${index}`}
+                      onClick={() => {
+                        setQuery(suggestion);
+                        void handleSearch(suggestion);
+                      }}
+                      className="cursor-pointer px-4 py-2 text-sm text-emerald-200 transition-colors hover:bg-emerald-900/40 sm:text-base"
+                    >
+                      {suggestion}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <button
+              onClick={() => void handleSearch()}
+              disabled={isSearching}
+              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
             </button>
-          ))}
+          </div>
         </div>
 
-        <div className="rounded border border-emerald-800 bg-emerald-900/70 p-4">
-          {selectedVideo ? (
-            <>
-              <img
-                src={selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
-                alt={selectedVideo.title}
-                className="mb-4 w-full rounded"
-                onError={(e) => {
-                  e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
-                }}
-              />
-              <h2 className="text-xl font-bold">{selectedVideo.title}</h2>
-              <p className="mt-2 text-emerald-100">{selectedVideo.channel}</p>
-              <p className="mt-2 text-sm text-emerald-200">
-                Duration: {formatDuration(selectedVideo.duration)}
-              </p>
-              <p className="mt-4 text-sm text-emerald-100">
-                Video formats are loaded at download time to avoid extractor errors in production.
-              </p>
-              <button
-                type="button"
-                className="mt-4 rounded bg-emerald-600 px-4 py-2 font-medium text-white hover:bg-emerald-500"
-                onClick={() => void downloadVideo(selectedVideo.url)}
+        {error && (
+          <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {selectedVideo ? (
+          <div className="space-y-6">
+            <button
+              onClick={() => setSelectedVideo(null)}
+              className="flex items-center gap-2 font-medium text-emerald-400 transition-colors hover:text-emerald-300"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to results
+            </button>
+
+            <div className="flex flex-col overflow-hidden rounded-2xl border border-emerald-800/30 bg-zinc-900/50 md:flex-row">
+              <div className="flex-1 border-b border-emerald-800/30 p-6 md:border-b-0 md:border-r">
+                <div className="mb-4 flex items-center gap-2 font-semibold text-emerald-300">
+                  <Music className="h-4 w-4" />
+                  Available Actions
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-emerald-800/30 bg-zinc-900/60 p-4">
+                    <p className="text-sm text-emerald-200">
+                      Direct server-side downloading is disabled in production right now because the extractor runtime is
+                      unavailable on Vercel. You can still open the video and copy the link without errors.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button
+                      onClick={() => openVideo(selectedVideo.url)}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
+                    >
+                      <Download className="h-4 w-4" />
+                      Open on YouTube
+                    </button>
+
+                    <button
+                      onClick={() => void copyVideoLink(selectedVideo.url)}
+                      className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy Link
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
+                <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                  <img
+                    src={selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
+                    alt={selectedVideo.title}
+                    className="h-auto w-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
+                    }}
+                  />
+                </div>
+                <h2 className="mb-2 font-bold text-emerald-100">{selectedVideo.title}</h2>
+                <p className="mb-1 text-sm font-medium text-emerald-500">{selectedVideo.channel}</p>
+                <p className="font-mono text-xs text-emerald-700">Duration: {formatDuration(selectedVideo.duration)}</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {results.map((result) => (
+              <div
+                key={result.id}
+                onClick={() => handleVideoClick(result)}
+                className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 transition-all hover:-translate-y-1 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
               >
-                Download
-              </button>
-            </>
-          ) : (
-            <p className="text-emerald-100">
-              Select a search result to load its details here.
-            </p>
-          )}
+                <div className="relative aspect-video bg-zinc-950">
+                  <img
+                    src={result.thumbnail || fallbackThumbnail(result.id)}
+                    alt={result.title}
+                    className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100"
+                    onError={(e) => {
+                      e.currentTarget.src = fallbackThumbnail(result.id);
+                    }}
+                  />
+                  <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-emerald-400">
+                    {formatDuration(result.duration)}
+                  </div>
+                </div>
+
+                <div className="flex flex-1 flex-col p-4">
+                  <h3 className="mb-1 line-clamp-2 font-semibold text-emerald-100 transition-colors group-hover:text-emerald-300">
+                    {result.title}
+                  </h3>
+                  <p className="mb-2 flex-1 text-sm text-emerald-600/80">{result.channel}</p>
+                  <div className="mt-auto text-xs font-medium text-emerald-500/50">Click to preview options</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {results.length === 0 && !isSearching && !selectedVideo && (
+          <div className="py-20 text-center text-emerald-800/50">
+            <Search className="mx-auto mb-4 h-16 w-16 opacity-20" />
+            <p>Search for a video to get started.</p>
+          </div>
+        )}
+
+        <div className="flex justify-center border-t border-emerald-900/30 pt-12 pb-6">
+          <button
+            onClick={() => setIsFeedbackOpen(true)}
+            className="group fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-indigo-600 hover:shadow-indigo-500/25"
+            aria-label="Send Feedback"
+          >
+            <MessageSquare className="h-6 w-6" />
+            <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium transition-all duration-300 ease-in-out group-hover:max-w-xs">
+              Feedback
+            </span>
+          </button>
         </div>
       </div>
+
+      <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
     </div>
   );
 }
-
-export default App;
