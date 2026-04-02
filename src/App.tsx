@@ -13,6 +13,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
+import { downloadVideo } from './download';
 
 interface SearchResult {
   id: string;
@@ -133,6 +134,10 @@ export default function App() {
 
   const openVideo = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleWorkerDownload = async (url: string) => {
+    await downloadVideo(url);
   };
 
   const copyVideoLink = async (url: string) => {
@@ -286,17 +291,25 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="rounded-xl border border-emerald-800/30 bg-zinc-900/60 p-4">
                     <p className="text-sm text-emerald-200">
-                      Direct server-side downloading is disabled in production right now because the extractor runtime is
-                      unavailable on Vercel. You can still open the video and copy the link without errors.
+                      Downloads are routed through your Cloudflare Worker now, so you can send the selected video to the
+                      downloader service without relying on the old Vercel extractor flow.
                     </p>
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <button
-                      onClick={() => openVideo(selectedVideo.url)}
+                      onClick={() => void handleWorkerDownload(selectedVideo.url)}
                       className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
                     >
                       <Download className="h-4 w-4" />
+                      Download via Worker
+                    </button>
+
+                    <button
+                      onClick={() => openVideo(selectedVideo.url)}
+                      className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                    >
+                      <Music className="h-4 w-4" />
                       Open on YouTube
                     </button>
 
