@@ -1,11 +1,11 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { ApiRequest, ApiResponse } from './types';
 import axios from 'axios';
 
 function youtubeThumbUrl(videoId: string) {
   return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   const { id } = req.query;
 
   if (!id || typeof id !== 'string') {

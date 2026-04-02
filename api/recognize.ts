@@ -1,4 +1,4 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { ApiRequest, ApiResponse } from './types';
 import multer from 'multer';
 import fs from 'fs';
 import axios from 'axios';
@@ -8,7 +8,7 @@ const upload = multer({ dest: '/tmp' });
 
 export const config = { api: { bodyParser: false } };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: ApiRequest, res: ApiResponse) {
   upload.single('audio')(req as any, res as any, async (err: any) => {
     if (err) return res.status(500).json({ error: 'Failed to upload file' });
     const file = (req as any).file;
