@@ -100,9 +100,14 @@ function toSearchVideo(renderer: any): SearchVideo | null {
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
+  res.setHeader('x-search-version', 'search-html-v2-2026-04-02');
+
   const { q } = req.query;
   if (!q || typeof q !== 'string') {
-    return res.status(400).json({ error: 'Query required' });
+    return res.status(400).json({
+      error: 'Query required',
+      version: 'search-html-v2-2026-04-02'
+    });
   }
 
   try {
@@ -129,9 +134,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       .filter((video): video is SearchVideo => Boolean(video))
       .slice(0, 10);
 
-    res.json(videos);
+    res.json({
+      version: 'search-html-v2-2026-04-02',
+      results: videos
+    });
   } catch (err) {
     console.error('search error', err);
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({
+      error: 'Search failed',
+      version: 'search-html-v2-2026-04-02'
+    });
   }
 }
