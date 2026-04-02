@@ -1,4 +1,5 @@
-const WORKER_BASE_URL = 'https://fk-downloader.falih-m.workers.dev';
+import { WORKER_BASE_URL } from './workerApi';
+
 const DEFAULT_SERVICE = 'gemini';
 
 function workerDownloadUrl(url: string) {

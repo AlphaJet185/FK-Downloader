@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
 import { downloadVideo } from './download';
+import { workerUrl } from './workerApi';
 
 interface SearchResult {
   id: string;
@@ -41,7 +42,7 @@ function formatDuration(seconds: number) {
 }
 
 function fallbackThumbnail(videoId: string) {
-  return `/api/thumb?id=${encodeURIComponent(videoId)}`;
+  return workerUrl('/thumb', { id: videoId });
 }
 
 export default function App() {
@@ -86,7 +87,7 @@ export default function App() {
 
     suggestTimeoutRef.current = window.setTimeout(async () => {
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
+        const res = await fetch(workerUrl('/suggest', { q: query }));
         const data = await res.json();
         setSuggestions(Array.isArray(data) ? data : []);
       } catch {
@@ -120,7 +121,7 @@ export default function App() {
     setStatus('Searching');
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
+      const res = await fetch(workerUrl('/search', { q: trimmedQuery }));
       const text = await res.text();
       const data = text ? JSON.parse(text) : [];
 
