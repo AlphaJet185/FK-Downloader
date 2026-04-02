@@ -5,6 +5,7 @@ import {
   Download,
   Loader2,
   MessageSquare,
+  Mic,
   Music,
   Radio,
   Search,
@@ -26,6 +27,13 @@ interface SearchResult {
 
 type SelectedVideo = SearchResult;
 
+interface RecognitionResult {
+  artist: string;
+  title: string;
+  album?: string;
+  releaseDate?: string;
+}
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -45,11 +53,15 @@ export default function App() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRecognizing, setIsRecognizing] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [error, setError] = useState('');
+  const [recognition, setRecognition] = useState<RecognitionResult | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const suggestTimeoutRef = useRef<number | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -89,6 +101,13 @@ export default function App() {
     };
   }, [query]);
 
+  useEffect(() => {
+    return () => {
+      mediaRecorderRef.current?.stop?.();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
+
   const handleSearch = async (searchQuery: string = query) => {
     const trimmedQuery = searchQuery.trim();
     if (!trimmedQuery) return;
@@ -96,6 +115,7 @@ export default function App() {
     setIsSearching(true);
     setShowSuggestions(false);
     setSelectedVideo(null);
+    setRecognition(null);
     setError('');
     setStatus('Searching');
 
@@ -130,6 +150,92 @@ export default function App() {
       thumbnail: video.thumbnail || fallbackThumbnail(video.id)
     });
     setError('');
+  };
+
+  const handleRecognize = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Audio recognition is not supported in this browser.');
+      return;
+    }
+
+    setIsRecognizing(true);
+    setError('');
+    setStatus('Listening');
+    setShowSuggestions(false);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const chunks: BlobPart[] = [];
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaRecorderRef.current = recorder;
+
+      const recordedBlob = await new Promise<Blob>((resolve, reject) => {
+        recorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            chunks.push(event.data);
+          }
+        };
+
+        recorder.onerror = () => reject(new Error('Recording failed'));
+        recorder.onstop = () => resolve(new Blob(chunks, { type: 'audio/webm' }));
+
+        recorder.start();
+        window.setTimeout(() => {
+          if (recorder.state !== 'inactive') {
+            recorder.stop();
+          }
+        }, 8000);
+      });
+
+      stream.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      mediaRecorderRef.current = null;
+
+      setStatus('Recognizing');
+
+      const formData = new FormData();
+      formData.append('audio', recordedBlob, 'recognition.webm');
+
+      const res = await fetch('/api/recognize', {
+        method: 'POST',
+        body: formData
+      });
+
+      const payload = await res.json();
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Recognition failed');
+      }
+
+      const match = payload?.result;
+      if (!match?.title) {
+        throw new Error('No song match found');
+      }
+
+      const recognized: RecognitionResult = {
+        artist: match.artist || 'Unknown Artist',
+        title: match.title,
+        album: match.album,
+        releaseDate: match.release_date
+      };
+
+      const recognizedQuery = `${recognized.artist} - ${recognized.title}`;
+      setRecognition(recognized);
+      setQuery(recognizedQuery);
+      setStatus('Match found');
+      await handleSearch(recognizedQuery);
+    } catch (err: any) {
+      mediaRecorderRef.current = null;
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      setRecognition(null);
+      setStatus('Idle');
+      setError(err?.message || 'Failed to recognize music.');
+    } finally {
+      setIsRecognizing(false);
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    }
   };
 
   const openVideo = (url: string) => {
@@ -262,8 +368,32 @@ export default function App() {
             >
               {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
             </button>
+
+            <button
+              onClick={() => void handleRecognize()}
+              disabled={isRecognizing}
+              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-6 py-3 font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:opacity-50"
+            >
+              {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+              {isRecognizing ? 'Listening...' : 'Recognize'}
+            </button>
           </div>
         </div>
+
+        {recognition && (
+          <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
+              <Music className="h-4 w-4" />
+              Recognized with Audd
+            </div>
+            <div className="text-emerald-100">{recognition.artist} - {recognition.title}</div>
+            {(recognition.album || recognition.releaseDate) && (
+              <div className="mt-1 text-sm text-emerald-500">
+                {[recognition.album, recognition.releaseDate].filter(Boolean).join(' • ')}
+              </div>
+            )}
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-300">
