@@ -1,19 +1,18 @@
-import { WORKER_BASE_URL } from './workerApi';
-
-const DEFAULT_SERVICE = 'gemini';
-
-function workerDownloadUrl(url: string) {
-  const params = new URLSearchParams({
-    url,
-    service: DEFAULT_SERVICE
-  });
-
-  return `${WORKER_BASE_URL}/?${params.toString()}`;
-}
-
 export async function downloadVideo(url: string, _type?: string) {
   try {
-    window.open(workerDownloadUrl(url), '_blank', 'noopener,noreferrer');
+    const localResponse = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
+
+    const text = await localResponse.text();
+    const data = text ? JSON.parse(text) : null;
+
+    if (localResponse.ok && data?.downloadUrl) {
+      window.open(data.downloadUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+  } catch {}
+
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
   } catch {
     window.open(url, '_blank', 'noopener,noreferrer');
   }

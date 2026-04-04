@@ -8,8 +8,6 @@
     "start": "node server.js",
     "build": "vite build",
     "build:with-yt-dlp": "vite build",
-    "worker:dev": "wrangler dev",
-    "worker:deploy": "wrangler deploy",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "clean": "rd /s /q node_modules && del package-lock.json"
@@ -42,7 +40,6 @@
     "ts-node": "^10.9.2",
     "typescript": "~5.8.2",
     "vite": "^7.3.1",
-    "wrangler": "^4.80.0",
     "ytdl-core": "^4.11.5"
   },
   "optionalDependencies": {

@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
 import { downloadVideo } from './download';
-import { workerUrl } from './workerApi';
 
 interface SearchResult {
   id: string;
@@ -42,7 +41,7 @@ function formatDuration(seconds: number) {
 }
 
 function fallbackThumbnail(videoId: string) {
-  return workerUrl('/thumb', { id: videoId });
+  return `/api/thumb?id=${encodeURIComponent(videoId)}`;
 }
 
 export default function App() {
@@ -87,7 +86,7 @@ export default function App() {
 
     suggestTimeoutRef.current = window.setTimeout(async () => {
       try {
-        const res = await fetch(workerUrl('/suggest', { q: query }));
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
         const data = await res.json();
         setSuggestions(Array.isArray(data) ? data : []);
       } catch {
@@ -121,7 +120,7 @@ export default function App() {
     setStatus('Searching');
 
     try {
-      const res = await fetch(workerUrl('/search', { q: trimmedQuery }));
+      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
       const text = await res.text();
       const data = text ? JSON.parse(text) : [];
 
@@ -129,7 +128,9 @@ export default function App() {
         throw new Error(data?.error || 'Search failed');
       }
 
-      const normalized = (data as SearchResult[]).map((result) => ({
+      const resultsArray = Array.isArray(data) ? data : data?.results || [];
+
+      const normalized = (resultsArray as SearchResult[]).map((result) => ({
         ...result,
         thumbnail: result.thumbnail || fallbackThumbnail(result.id)
       }));
@@ -243,7 +244,7 @@ export default function App() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
-  const handleWorkerDownload = async (url: string) => {
+  const handleDownload = async (url: string) => {
     await downloadVideo(url);
   };
 
@@ -422,18 +423,17 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="rounded-xl border border-emerald-800/30 bg-zinc-900/60 p-4">
                     <p className="text-sm text-emerald-200">
-                      Downloads are routed through your Cloudflare Worker now, so you can send the selected video to the
-                      downloader service without relying on the old Vercel extractor flow.
+                      Downloads are routed through the app backend on this deployment.
                     </p>
                   </div>
 
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <button
-                      onClick={() => void handleWorkerDownload(selectedVideo.url)}
+                      onClick={() => void handleDownload(selectedVideo.url)}
                       className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
                     >
                       <Download className="h-4 w-4" />
-                      Download via Worker
+                      Download
                     </button>
 
                     <button
