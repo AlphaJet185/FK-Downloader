@@ -604,16 +604,26 @@ app.get("/api/download", async (req, res) => {
       const ext =
         selectedFormat?.ext || (type === "audio" ? "m4a" : "mp4");
       const fileName = `${sanitizeFileName(probeInfo.title || "download")}.${ext}`;
+      const upstreamHeaders = {
+        "User-Agent": "Mozilla/5.0",
+      };
+
+      if (typeof req.headers.range === "string" && req.headers.range) {
+        upstreamHeaders.Range = req.headers.range;
+      }
+
       const upstreamResponse = await fetch(selectedFormat.url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-        },
+        headers: upstreamHeaders,
       });
 
       if (!upstreamResponse.ok || !upstreamResponse.body) {
         throw new Error(
           `Media request failed with status ${upstreamResponse.status}`,
         );
+      }
+
+      if (upstreamResponse.status === 206) {
+        res.status(206);
       }
 
       res.setHeader(
@@ -631,6 +641,18 @@ app.get("/api/download", async (req, res) => {
       const contentLength = upstreamResponse.headers.get("content-length");
       if (contentLength) {
         res.setHeader("Content-Length", contentLength);
+      }
+
+      const contentRange = upstreamResponse.headers.get("content-range");
+      if (contentRange) {
+        res.setHeader("Content-Range", contentRange);
+      }
+
+      const acceptRanges = upstreamResponse.headers.get("accept-ranges");
+      if (acceptRanges) {
+        res.setHeader("Accept-Ranges", acceptRanges);
+      } else if (isPreview) {
+        res.setHeader("Accept-Ranges", "bytes");
       }
 
       res.setHeader("X-Download-Title", probeInfo.title || "download");
