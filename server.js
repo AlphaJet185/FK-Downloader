@@ -44,9 +44,9 @@ function normalizeFormats(formats = []) {
     }));
 }
 
-function normalizeInfoFormats(formats = []) {
+function normalizeInfoFormats(formats = [], sourceUrl = "") {
   return formats
-    .filter((format) => format?.url)
+    .filter((format) => format?.url && format?.ext !== "webm")
     .map((format) => ({
       itag: format.format_id,
       qualityLabel:
@@ -63,7 +63,7 @@ function normalizeInfoFormats(formats = []) {
         format.filesize || format.filesize_approx
           ? `${(Number(format.filesize || format.filesize_approx) / (1024 * 1024)).toFixed(2)}M`
           : "Unknown",
-      url: format.url,
+      url: `/api/download?url=${encodeURIComponent(sourceUrl)}&itag=${encodeURIComponent(format.format_id || "")}`,
     }));
 }
 
@@ -358,7 +358,7 @@ app.get("/api/info", async (req, res) => {
     const info = await youtubedl(url, {
       dumpSingleJson: true,
       noWarnings: true,
-      preferFreeFormats: true,
+      preferFreeFormats: false,
       noCheckCertificates: true,
       youtubeSkipDashManifest: true,
     });
@@ -367,12 +367,25 @@ app.get("/api/info", async (req, res) => {
       throw new Error("yt-dlp returned an unexpected payload");
     }
 
-    const formats = normalizeInfoFormats(info.formats || []);
+    const formats = normalizeInfoFormats(
+      info.formats || [],
+      info.webpage_url || info.original_url || url,
+    );
     const audioFormats = formats
-      .filter((format) => !format.hasVideo && format.hasAudio)
+      .filter(
+        (format) =>
+          !format.hasVideo &&
+          format.hasAudio &&
+          format.mimeType?.includes("m4a")
+      )
       .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
     const videoFormats = formats
-      .filter((format) => format.hasVideo)
+      .filter(
+        (format) =>
+          format.hasVideo &&
+          format.hasAudio &&
+          format.mimeType?.includes("mp4")
+      )
       .sort((a, b) => {
         const aRes = parseInt(a.qualityLabel, 10) || 0;
         const bRes = parseInt(b.qualityLabel, 10) || 0;
@@ -438,7 +451,9 @@ app.get("/api/download", async (req, res) => {
   const rawUrl = firstArrayValue(req.query.url);
   const url = normalizeVideoUrl(rawUrl);
   const rawType = firstArrayValue(req.query.type);
+  const rawItag = firstArrayValue(req.query.itag);
   const type = rawType === "audio" ? "audio" : "video";
+  const itag = typeof rawItag === "string" ? rawItag.trim() : "";
 
   if (!url) {
     return res.status(400).json({ error: "URL required" });
@@ -449,7 +464,7 @@ app.get("/api/download", async (req, res) => {
       dumpSingleJson: true,
       noWarnings: true,
       noCheckCertificates: true,
-      preferFreeFormats: true,
+      preferFreeFormats: false,
       youtubeSkipDashManifest: true,
     });
 
@@ -457,7 +472,6 @@ app.get("/api/download", async (req, res) => {
       throw new Error("yt-dlp returned an unexpected payload");
     }
 
-    const formats = normalizeFormats(probeInfo.formats || []);
     const tempDir = path.join(
       os.tmpdir(),
       `fk-downloader-${Date.now()}-${crypto.randomUUID()}`
@@ -472,19 +486,21 @@ app.get("/api/download", async (req, res) => {
       noCheckCertificates: true,
       preferFreeFormats: false,
       youtubeSkipDashManifest: true,
-
-      format:
-        type === "audio"
+      format: itag
+        ? itag
+        : type === "audio"
           ? "bestaudio[ext=m4a]/bestaudio"
           : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
-
-      mergeOutputFormat: "mp4",
-
-      ...(type === "audio"
+      ...(!itag
         ? {
-            extractAudio: true,
-            audioFormat: "mp3",
-            audioQuality: "0",
+            mergeOutputFormat: "mp4",
+            ...(type === "audio"
+              ? {
+                  extractAudio: true,
+                  audioFormat: "mp3",
+                  audioQuality: "0",
+                }
+              : {}),
           }
         : {}),
     };

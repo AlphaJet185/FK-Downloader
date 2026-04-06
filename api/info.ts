@@ -43,16 +43,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       duration: Number(info.duration || 0),
 
       audioFormats: formats
-        .filter(f => !f.hasVideo && f.hasAudio)
+        .filter(f => !f.hasVideo && f.hasAudio && f.mimeType?.includes("m4a"))
         .sort((a,b) => (b.bitrate||0)-(a.bitrate||0)),
 
+
       videoFormats: formats
-        .filter(f => f.hasVideo)
+        .filter(f => f.hasVideo && f.hasAudio && f.mimeType?.includes("mp4"))
         .sort((a,b) => {
-          const aRes = parseInt(a.qualityLabel) || 0;
-          const bRes = parseInt(b.qualityLabel) || 0;
-          return bRes - aRes;
-        }),
+        const aRes = parseInt(a.qualityLabel) || 0;
+        const bRes = parseInt(b.qualityLabel) || 0;
+        return bRes - aRes;
+      }),
 
       thumbnail: info.thumbnails?.at(-1)?.url || info.thumbnail,
 

@@ -575,12 +575,6 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="rounded-xl border border-emerald-800/30 bg-zinc-900/60 p-4">
-                    <p className="text-sm text-emerald-200">
-                      Pick a specific audio or video format below, similar to classic downloader sites.
-                    </p>
-                  </div>
-
                   {isLoadingDetails ? (
                     <div className="flex items-center gap-2 text-sm text-emerald-300">
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -654,7 +648,7 @@ export default function App() {
 
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
-                          onClick={() => void handleDownload(selectedVideo.url)}
+                          onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
                           className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
                         >
                           <Download className="h-4 w-4" />
