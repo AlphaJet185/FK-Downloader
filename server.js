@@ -44,6 +44,29 @@ function normalizeFormats(formats = []) {
     }));
 }
 
+function normalizeInfoFormats(formats = []) {
+  return formats
+    .filter((format) => format?.url)
+    .map((format) => ({
+      itag: format.format_id,
+      qualityLabel:
+        format.format_note ||
+        format.format ||
+        (format.vcodec !== "none" ? "Video" : "Audio"),
+      bitrate: format.tbr || format.vbr || format.abr || 0,
+      mimeType: format.ext
+        ? `${format.vcodec !== "none" ? "video" : "audio"}/${format.ext}`
+        : undefined,
+      hasVideo: format.vcodec !== "none",
+      hasAudio: format.acodec !== "none",
+      contentLength:
+        format.filesize || format.filesize_approx
+          ? `${(Number(format.filesize || format.filesize_approx) / (1024 * 1024)).toFixed(2)}M`
+          : "Unknown",
+      url: format.url,
+    }));
+}
+
 function pickDirectDownloadUrl(info) {
   const formats = normalizeFormats(info?.formats || []);
 
@@ -323,6 +346,58 @@ app.get("/api/oembed", async (req, res) => {
   }
 });
 
+app.get("/api/info", async (req, res) => {
+  const rawUrl = firstArrayValue(req.query.url);
+  const url = normalizeVideoUrl(rawUrl);
+
+  if (!url) {
+    return res.status(400).json({ error: "URL required" });
+  }
+
+  try {
+    const info = await youtubedl(url, {
+      dumpSingleJson: true,
+      noWarnings: true,
+      preferFreeFormats: true,
+      noCheckCertificates: true,
+      youtubeSkipDashManifest: true,
+    });
+
+    if (!info || typeof info === "string") {
+      throw new Error("yt-dlp returned an unexpected payload");
+    }
+
+    const formats = normalizeInfoFormats(info.formats || []);
+    const audioFormats = formats
+      .filter((format) => !format.hasVideo && format.hasAudio)
+      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+    const videoFormats = formats
+      .filter((format) => format.hasVideo)
+      .sort((a, b) => {
+        const aRes = parseInt(a.qualityLabel, 10) || 0;
+        const bRes = parseInt(b.qualityLabel, 10) || 0;
+        return bRes - aRes;
+      });
+
+    return res.json({
+      id: info.id,
+      title: info.title,
+      channel: info.channel || info.uploader || "",
+      duration: Number(info.duration || 0),
+      thumbnail: info.thumbnails?.at(-1)?.url || info.thumbnail,
+      url: info.webpage_url || info.original_url || url,
+      audioFormats,
+      videoFormats,
+    });
+  } catch (error) {
+    console.error("info error", error);
+    return res.status(500).json({
+      error:
+        error instanceof Error ? error.message : "Failed to fetch video details",
+    });
+  }
+});
+
 app.get("/api/search", async (req, res) => {
   const rawQuery = firstArrayValue(req.query.q);
   const q = typeof rawQuery === "string" ? rawQuery.trim() : "";
@@ -395,10 +470,16 @@ app.get("/api/download", async (req, res) => {
       output: outputTemplate,
       noWarnings: true,
       noCheckCertificates: true,
-      preferFreeFormats: true,
+      preferFreeFormats: false,
       youtubeSkipDashManifest: true,
-      format: type === "audio" ? "bestaudio/best" : "bv*+ba/b",
-      mergeOutputFormat: type === "video" ? "mp4" : undefined,
+
+      format:
+        type === "audio"
+          ? "bestaudio[ext=m4a]/bestaudio"
+          : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
+
+      mergeOutputFormat: "mp4",
+
       ...(type === "audio"
         ? {
             extractAudio: true,
@@ -407,6 +488,8 @@ app.get("/api/download", async (req, res) => {
           }
         : {}),
     };
+
+
 
     await youtubedl(url, downloadOptions);
 

@@ -13,14 +13,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const info = await youtubedl(url, {
       dumpSingleJson: true,
       noWarnings: true,
-      preferFreeFormats: true
+      preferFreeFormats: false,
     });
 
     if (typeof info === 'string') {
       throw new Error('yt-dlp returned an unexpected string payload');
     }
 
-    const formats = (info.formats || []).map((f: any) => ({
+    const formats = (info.formats || [])
+    .filter((f: any) => f.ext !== "webm") // ❌ remove webm formats
+    .map((f: any) => ({
+
       itag: f.format_id,
       qualityLabel: f.format_note || f.format || (f.vcodec !== 'none' ? "Video" : "Audio"),
       bitrate: f.tbr || f.vbr || f.abr || 0,
@@ -30,7 +33,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       contentLength: f.filesize || f.filesize_approx
         ? ((Number(f.filesize || f.filesize_approx) / (1024 * 1024)).toFixed(2) + "M")
         : "Unknown",
-      url: f.url
+      url: `/api/download?url=${encodeURIComponent(url)}&itag=${f.format_id}`
     }));
 
     res.json({
