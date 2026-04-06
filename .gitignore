@@ -14,3 +14,5 @@ fk-downloader-api/node_modules
 fk-downloader-api/package-lock.json
 yt-api/node_modules
 yt-api/package-lock.json
+.cloudflared/*.json
+.cloudflared/cert.pem

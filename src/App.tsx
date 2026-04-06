@@ -14,7 +14,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
-import { downloadVideo } from './download';
+import { downloadVideo, openDownloadUrl } from './download';
 
 interface SearchResult {
   id: string;
@@ -34,6 +34,27 @@ interface RecognitionResult {
   releaseDate?: string;
 }
 
+interface FormatOption {
+  itag: string;
+  qualityLabel: string;
+  bitrate: number;
+  mimeType?: string;
+  hasVideo: boolean;
+  hasAudio: boolean;
+  contentLength: string;
+  url: string;
+}
+
+interface VideoDetails {
+  title: string;
+  channel: string;
+  duration: number;
+  thumbnail: string;
+  url: string;
+  audioFormats: FormatOption[];
+  videoFormats: FormatOption[];
+}
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -42,6 +63,51 @@ function formatDuration(seconds: number) {
 
 function fallbackThumbnail(videoId: string) {
   return `/api/thumb?id=${encodeURIComponent(videoId)}`;
+}
+
+function parseJsonSafely(text: string) {
+  if (!text) return null;
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function extractYouTubeVideoId(input: string) {
+  try {
+    const url = new URL(input.trim());
+    const hostname = url.hostname.replace(/^www\./, '');
+
+    if (hostname === 'youtu.be') {
+      return url.pathname.split('/').filter(Boolean)[0] || null;
+    }
+
+    if (
+      hostname === 'youtube.com' ||
+      hostname === 'm.youtube.com' ||
+      hostname === 'music.youtube.com'
+    ) {
+      if (url.pathname === '/watch') {
+        return url.searchParams.get('v');
+      }
+
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      if (pathParts[0] === 'shorts' || pathParts[0] === 'embed') {
+        return pathParts[1] || null;
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
@@ -54,9 +120,11 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isDragging, setIsDragging] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [error, setError] = useState('');
   const [recognition, setRecognition] = useState<RecognitionResult | null>(null);
+  const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   const suggestTimeoutRef = useRef<number | null>(null);
@@ -87,7 +155,8 @@ export default function App() {
     suggestTimeoutRef.current = window.setTimeout(async () => {
       try {
         const res = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
+        const text = await res.text();
+        const data = parseJsonSafely(text);
         setSuggestions(Array.isArray(data) ? data : []);
       } catch {
         setSuggestions([]);
@@ -115,14 +184,54 @@ export default function App() {
     setIsSearching(true);
     setShowSuggestions(false);
     setSelectedVideo(null);
+    setVideoDetails(null);
     setRecognition(null);
     setError('');
     setStatus('Searching');
 
     try {
+      const videoId = extractYouTubeVideoId(trimmedQuery);
+
+      if (videoId) {
+        const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
+        const oembedResponse = await fetch(
+          `/api/oembed?url=${encodeURIComponent(directUrl)}`
+        );
+
+        const oembedText = await oembedResponse.text();
+        const oembedPayload = parseJsonSafely(oembedText);
+
+        if (!oembedResponse.ok) {
+          throw new Error(oembedPayload?.error || 'Failed to load video from pasted link.');
+        }
+
+        if (!oembedPayload) {
+          throw new Error('Video info response was not valid JSON.');
+        }
+
+        const oembed = oembedPayload;
+        const directVideo: SearchResult = {
+          id: videoId,
+          title: oembed.title || 'YouTube Video',
+          channel: oembed.author_name || 'YouTube',
+          duration: 0,
+          thumbnail: fallbackThumbnail(videoId),
+          url: directUrl
+        };
+
+        setResults([directVideo]);
+        await loadVideoDetails(directVideo);
+        setStatus('Idle');
+        return;
+      }
+
       const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
       const text = await res.text();
-      const data = text ? JSON.parse(text) : [];
+      const data = parseJsonSafely(text);
+
+      if (!data && text.trim().startsWith('<')) {
+        throw new Error('Search API returned HTML instead of JSON.');
+      }
 
       if (!res.ok) {
         throw new Error(data?.error || 'Search failed');
@@ -146,12 +255,47 @@ export default function App() {
     }
   };
 
-  const handleVideoClick = (video: SearchResult) => {
+  const loadVideoDetails = async (video: SearchResult) => {
     setSelectedVideo({
       ...video,
       thumbnail: video.thumbnail || fallbackThumbnail(video.id)
     });
+    setVideoDetails(null);
+    setIsLoadingDetails(true);
     setError('');
+
+    try {
+      const res = await fetch(`/api/info?url=${encodeURIComponent(video.url)}`);
+      const text = await res.text();
+      const payload = parseJsonSafely(text);
+
+      if (!payload && text.trim().startsWith('<')) {
+        throw new Error('Video details API returned HTML instead of JSON.');
+      }
+
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to load video details.');
+      }
+
+      setVideoDetails({
+        title: payload?.title || video.title,
+        channel: payload?.channel || payload?.uploader || video.channel,
+        duration: Number(payload?.duration || video.duration || 0),
+        thumbnail: payload?.thumbnail || video.thumbnail || fallbackThumbnail(video.id),
+        url: payload?.url || video.url,
+        audioFormats: Array.isArray(payload?.audioFormats) ? payload.audioFormats : [],
+        videoFormats: Array.isArray(payload?.videoFormats) ? payload.videoFormats : []
+      });
+    } catch (err: any) {
+      setVideoDetails(null);
+      setError(err?.message || 'Failed to load video details.');
+    } finally {
+      setIsLoadingDetails(false);
+    }
+  };
+
+  const handleVideoClick = (video: SearchResult) => {
+    void loadVideoDetails(video);
   };
 
   const handleRecognize = async () => {
@@ -205,7 +349,13 @@ export default function App() {
         body: formData
       });
 
-      const payload = await res.json();
+      const recognizeText = await res.text();
+      const payload = parseJsonSafely(recognizeText);
+
+      if (!payload && recognizeText.trim().startsWith('<')) {
+        throw new Error('Recognition API returned HTML instead of JSON.');
+      }
+
       if (!res.ok) {
         throw new Error(payload?.error || 'Recognition failed');
       }
@@ -246,6 +396,10 @@ export default function App() {
 
   const handleDownload = async (url: string) => {
     await downloadVideo(url);
+  };
+
+  const handleFormatDownload = async (format: FormatOption) => {
+    await openDownloadUrl(format.url);
   };
 
   const copyVideoLink = async (url: string) => {
@@ -417,58 +571,133 @@ export default function App() {
               <div className="flex-1 border-b border-emerald-800/30 p-6 md:border-b-0 md:border-r">
                 <div className="mb-4 flex items-center gap-2 font-semibold text-emerald-300">
                   <Music className="h-4 w-4" />
-                  Available Actions
+                  Available Formats
                 </div>
 
                 <div className="space-y-4">
                   <div className="rounded-xl border border-emerald-800/30 bg-zinc-900/60 p-4">
                     <p className="text-sm text-emerald-200">
-                      Downloads are routed through the app backend on this deployment.
+                      Pick a specific audio or video format below, similar to classic downloader sites.
                     </p>
                   </div>
 
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <button
-                      onClick={() => void handleDownload(selectedVideo.url)}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download
-                    </button>
+                  {isLoadingDetails ? (
+                    <div className="flex items-center gap-2 text-sm text-emerald-300">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading available formats...
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
+                        <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
+                          Audio
+                        </div>
+                        <div className="space-y-2 p-3">
+                          {(videoDetails?.audioFormats || []).slice(0, 6).map((format) => (
+                            <div
+                              key={`audio-${format.itag}-${format.url}`}
+                              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-900/40 bg-zinc-900/70 px-3 py-3"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-emerald-100">
+                                  {format.qualityLabel} {format.mimeType ? `(${format.mimeType.split('/')[1]})` : ''}
+                                </div>
+                                <div className="text-xs text-emerald-500">
+                                  {format.contentLength} {format.bitrate ? `• ${Math.round(format.bitrate)} kbps` : ''}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => void handleFormatDownload(format)}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          ))}
+                          {!videoDetails?.audioFormats?.length && (
+                            <div className="text-sm text-emerald-500">No audio-only formats found.</div>
+                          )}
+                        </div>
+                      </div>
 
-                    <button
-                      onClick={() => openVideo(selectedVideo.url)}
-                      className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
-                    >
-                      <Music className="h-4 w-4" />
-                      Open on YouTube
-                    </button>
+                      <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
+                        <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
+                          Video
+                        </div>
+                        <div className="space-y-2 p-3">
+                          {(videoDetails?.videoFormats || []).slice(0, 8).map((format) => (
+                            <div
+                              key={`video-${format.itag}-${format.url}`}
+                              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-900/40 bg-zinc-900/70 px-3 py-3"
+                            >
+                              <div>
+                                <div className="text-sm font-semibold text-emerald-100">
+                                  {format.qualityLabel} {format.mimeType ? `(${format.mimeType.split('/')[1]})` : ''}
+                                </div>
+                                <div className="text-xs text-emerald-500">
+                                  {format.contentLength} {format.hasAudio ? '• with audio' : '• video only'}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => void handleFormatDownload(format)}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          ))}
+                          {!videoDetails?.videoFormats?.length && (
+                            <div className="text-sm text-emerald-500">No video formats found.</div>
+                          )}
+                        </div>
+                      </div>
 
-                    <button
-                      onClick={() => void copyVideoLink(selectedVideo.url)}
-                      className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copy Link
-                    </button>
-                  </div>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <button
+                          onClick={() => void handleDownload(selectedVideo.url)}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                        >
+                          <Download className="h-4 w-4" />
+                          Quick Download
+                        </button>
+
+                        <button
+                          onClick={() => openVideo(selectedVideo.url)}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                        >
+                          <Music className="h-4 w-4" />
+                          Open on YouTube
+                        </button>
+
+                        <button
+                          onClick={() => void copyVideoLink(selectedVideo.url)}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                        >
+                          <Copy className="h-4 w-4" />
+                          Copy Link
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
                 <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                   <img
-                    src={selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
-                    alt={selectedVideo.title}
+                    src={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
+                    alt={videoDetails?.title || selectedVideo.title}
                     className="h-auto w-full object-contain"
                     onError={(e) => {
                       e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
                     }}
                   />
                 </div>
-                <h2 className="mb-2 font-bold text-emerald-100">{selectedVideo.title}</h2>
-                <p className="mb-1 text-sm font-medium text-emerald-500">{selectedVideo.channel}</p>
-                <p className="font-mono text-xs text-emerald-700">Duration: {formatDuration(selectedVideo.duration)}</p>
+                <h2 className="mb-2 font-bold text-emerald-100">{videoDetails?.title || selectedVideo.title}</h2>
+                <p className="mb-1 text-sm font-medium text-emerald-500">{videoDetails?.channel || selectedVideo.channel}</p>
+                <p className="font-mono text-xs text-emerald-700">
+                  Duration: {formatDuration(videoDetails?.duration || selectedVideo.duration)}
+                </p>
               </div>
             </div>
           </div>

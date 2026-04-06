@@ -1,0 +1,7 @@
+tunnel: fk-downloader
+credentials-file: .cloudflared/fk-downloader.json
+
+ingress:
+  - hostname: downloader.example.com
+    service: http://localhost:3000
+  - service: http_status:404

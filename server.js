@@ -2,6 +2,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import youtubedl from "youtube-dl-exec";
+import fs from "node:fs";
+import fsp from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
 
 dotenv.config();
 
@@ -66,6 +71,125 @@ function pickDirectDownloadUrl(info) {
   return audioOnly?.url || "";
 }
 
+function getStableThumbnail(videoId, fallback = "") {
+  if (!videoId) return fallback;
+  return `/api/thumb?id=${encodeURIComponent(videoId)}`;
+}
+
+function parseDuration(text = "") {
+  const parts = text
+    .split(":")
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part));
+
+  if (parts.length === 0) return 0;
+  return parts.reduce((total, value) => total * 60 + value, 0);
+}
+
+function extractInitialData(html) {
+  const patterns = [
+    /var ytInitialData = (\{.*?\});<\/script>/s,
+    /window\["ytInitialData"\] = (\{.*?\});<\/script>/s,
+    /ytInitialData = (\{.*?\});<\/script>/s,
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return JSON.parse(match[1]);
+    }
+  }
+
+  throw new Error("Unable to parse YouTube search payload");
+}
+
+function collectVideoRenderers(node, results = []) {
+  if (!node || typeof node !== "object") return results;
+
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      collectVideoRenderers(item, results);
+    }
+    return results;
+  }
+
+  if (node.videoRenderer) {
+    results.push(node.videoRenderer);
+  }
+
+  for (const value of Object.values(node)) {
+    collectVideoRenderers(value, results);
+  }
+
+  return results;
+}
+
+function toSearchVideo(renderer) {
+  const id = renderer?.videoId;
+  const title =
+    renderer?.title?.runs?.map((run) => run?.text).join("") ||
+    renderer?.title?.simpleText ||
+    "";
+
+  if (!id || !title) return null;
+
+  const channel =
+    renderer?.ownerText?.runs?.[0]?.text ||
+    renderer?.longBylineText?.runs?.[0]?.text ||
+    renderer?.shortBylineText?.runs?.[0]?.text ||
+    "";
+
+  const durationText =
+    renderer?.lengthText?.simpleText ||
+    renderer?.lengthText?.runs?.map((run) => run?.text).join("") ||
+    "";
+
+  const thumbUrl =
+    renderer?.thumbnail?.thumbnails?.at?.(-1)?.url ||
+    renderer?.thumbnail?.thumbnails?.[0]?.url ||
+    "";
+
+  return {
+    id,
+    title,
+    channel,
+    duration: parseDuration(durationText),
+    thumbnail: getStableThumbnail(id, thumbUrl),
+    url: `https://youtube.com/watch?v=${id}`,
+  };
+}
+
+function downloadContentType(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+
+  switch (ext) {
+    case ".mp4":
+      return "video/mp4";
+    case ".webm":
+      return "video/webm";
+    case ".mkv":
+      return "video/x-matroska";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".m4a":
+      return "audio/mp4";
+    case ".opus":
+      return "audio/opus";
+    case ".wav":
+      return "audio/wav";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+async function cleanupDirectory(dirPath) {
+  try {
+    await fsp.rm(dirPath, { recursive: true, force: true });
+  } catch (error) {
+    console.error("cleanup error", error);
+  }
+}
+
 app.get("/video-info", async (req, res) => {
   const rawUrl = firstArrayValue(req.query.url);
   const url = normalizeVideoUrl(rawUrl);
@@ -103,7 +227,64 @@ app.get("/api/health", (_req, res) => {
   res.json({ ok: true, service: "local-downloader" });
 });
 
-app.get("/api/download", async (req, res) => {
+app.get("/api/suggest", async (req, res) => {
+  const rawQuery = firstArrayValue(req.query.q);
+  const q = typeof rawQuery === "string" ? rawQuery.trim() : "";
+
+  if (!q) {
+    return res.json([]);
+  }
+
+  try {
+    const response = await fetch(
+      `https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=${encodeURIComponent(q)}`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0" },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Suggestion request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json();
+    return res.json(Array.isArray(payload?.[1]) ? payload[1] : []);
+  } catch (error) {
+    console.error("suggest error", error);
+    return res.status(500).json([]);
+  }
+});
+
+app.get("/api/thumb", async (req, res) => {
+  const rawId = firstArrayValue(req.query.id);
+  const id = typeof rawId === "string" ? rawId.trim() : "";
+
+  if (!id) {
+    return res.status(400).send("Video id required");
+  }
+
+  try {
+    const response = await fetch(`https://i.ytimg.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Thumbnail request failed with status ${response.status}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.setHeader("Content-Type", response.headers.get("content-type") || "image/jpeg");
+    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
+    return res.status(200).send(buffer);
+  } catch (error) {
+    console.error("thumbnail proxy error", error);
+    return res.status(404).send("Thumbnail not found");
+  }
+});
+
+app.get("/api/oembed", async (req, res) => {
   const rawUrl = firstArrayValue(req.query.url);
   const url = normalizeVideoUrl(rawUrl);
 
@@ -112,7 +293,84 @@ app.get("/api/download", async (req, res) => {
   }
 
   try {
-    const info = await youtubedl(url, {
+    const response = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+          Accept: "application/json",
+        },
+      },
+    );
+
+    const text = await response.text();
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        error: "Failed to load video from pasted link",
+        details: text.slice(0, 300),
+      });
+    }
+
+    res.setHeader("Content-Type", "application/json");
+    return res.send(text);
+  } catch (error) {
+    return res.status(500).json({
+      error: "Failed to load video from pasted link",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+app.get("/api/search", async (req, res) => {
+  const rawQuery = firstArrayValue(req.query.q);
+  const q = typeof rawQuery === "string" ? rawQuery.trim() : "";
+
+  if (!q) {
+    return res.status(400).json({ error: "Query required" });
+  }
+
+  try {
+    const response = await fetch(
+      `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=en`,
+      {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`YouTube search request failed with status ${response.status}`);
+    }
+
+    const html = await response.text();
+    const initialData = extractInitialData(html);
+    const renderers = collectVideoRenderers(initialData);
+    const videos = renderers.map(toSearchVideo).filter(Boolean).slice(0, 10);
+
+    return res.json(videos);
+  } catch (error) {
+    console.error("search error", error);
+    return res.status(500).json({ error: "Search failed" });
+  }
+});
+
+app.get("/api/download", async (req, res) => {
+  const rawUrl = firstArrayValue(req.query.url);
+  const url = normalizeVideoUrl(rawUrl);
+  const rawType = firstArrayValue(req.query.type);
+  const type = rawType === "audio" ? "audio" : "video";
+
+  if (!url) {
+    return res.status(400).json({ error: "URL required" });
+  }
+
+  try {
+    const probeInfo = await youtubedl(url, {
       dumpSingleJson: true,
       noWarnings: true,
       noCheckCertificates: true,
@@ -120,25 +378,75 @@ app.get("/api/download", async (req, res) => {
       youtubeSkipDashManifest: true,
     });
 
-    if (!info || typeof info === "string") {
+    if (!probeInfo || typeof probeInfo === "string") {
       throw new Error("yt-dlp returned an unexpected payload");
     }
 
-    const formats = normalizeFormats(info.formats || []);
-    const downloadUrl = pickDirectDownloadUrl(info);
+    const formats = normalizeFormats(probeInfo.formats || []);
+    const tempDir = path.join(
+      os.tmpdir(),
+      `fk-downloader-${Date.now()}-${crypto.randomUUID()}`
+    );
+    const outputTemplate = path.join(tempDir, "download.%(ext)s");
 
-    if (!downloadUrl) {
-      throw new Error("No downloadable format URL returned");
+    await fsp.mkdir(tempDir, { recursive: true });
+
+    const downloadOptions = {
+      output: outputTemplate,
+      noWarnings: true,
+      noCheckCertificates: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
+      format: type === "audio" ? "bestaudio/best" : "bv*+ba/b",
+      mergeOutputFormat: type === "video" ? "mp4" : undefined,
+      ...(type === "audio"
+        ? {
+            extractAudio: true,
+            audioFormat: "mp3",
+            audioQuality: "0",
+          }
+        : {}),
+    };
+
+    await youtubedl(url, downloadOptions);
+
+    const downloadedFiles = (await fsp.readdir(tempDir))
+      .filter((fileName) => !fileName.endsWith(".part"))
+      .map((fileName) => path.join(tempDir, fileName));
+
+    const targetFile = downloadedFiles[0];
+
+    if (!targetFile) {
+      await cleanupDirectory(tempDir);
+      throw new Error("Download file was not created");
     }
 
-    return res.json({
-      title: info.title || "download",
-      thumbnail: info.thumbnail || "",
-      duration: Number(info.duration || 0),
-      uploader: info.uploader || "",
-      formats,
-      downloadUrl,
+    const downloadName = path.basename(targetFile);
+    res.setHeader("Content-Type", downloadContentType(downloadName));
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${downloadName.replace(/"/g, "")}"`
+    );
+    res.setHeader("X-Download-Title", probeInfo.title || "download");
+    res.setHeader("X-Download-Type", type);
+
+    const stream = fs.createReadStream(targetFile);
+
+    stream.on("error", async (error) => {
+      console.error("stream error", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to stream downloaded file" });
+      } else {
+        res.destroy(error);
+      }
+      await cleanupDirectory(tempDir);
     });
+
+    res.on("close", () => {
+      void cleanupDirectory(tempDir);
+    });
+
+    stream.pipe(res);
   } catch (error) {
     console.error("download error", error);
     return res.status(500).json({
