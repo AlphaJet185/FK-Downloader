@@ -156,6 +156,8 @@ export default function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
+  const [previewDuration, setPreviewDuration] = useState(0);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -215,6 +217,8 @@ export default function App() {
       previewVideoRef.current.currentTime = 0;
     }
     setIsPreviewPlaying(false);
+    setPreviewCurrentTime(0);
+    setPreviewDuration(0);
   }, [selectedVideo?.id, videoDetails?.previewUrl]);
 
   const handleSearch = async (searchQuery: string = query) => {
@@ -459,6 +463,21 @@ export default function App() {
 
     player.pause();
     setIsPreviewPlaying(false);
+  };
+
+  const handlePreviewTimeUpdate = () => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    setPreviewCurrentTime(player.currentTime || 0);
+    setPreviewDuration(player.duration || videoDetails?.duration || selectedVideo?.duration || 0);
+  };
+
+  const handlePreviewMetadata = () => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    setPreviewDuration(player.duration || videoDetails?.duration || selectedVideo?.duration || 0);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -726,18 +745,37 @@ export default function App() {
                       className="aspect-video w-full bg-black object-contain"
                       playsInline
                       preload="none"
+                      onLoadedMetadata={handlePreviewMetadata}
+                      onTimeUpdate={handlePreviewTimeUpdate}
                       onPlay={() => setIsPreviewPlaying(true)}
                       onPause={() => setIsPreviewPlaying(false)}
                       onEnded={() => setIsPreviewPlaying(false)}
                     />
-                    <button
-                      type="button"
-                      onClick={() => void togglePreviewPlayback()}
-                      className="flex w-full items-center justify-center gap-2 border-t border-zinc-800/70 bg-zinc-950 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-zinc-900"
-                    >
-                      {isPreviewPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                      {isPreviewPlaying ? 'Pause Preview' : 'Play Preview'}
-                    </button>
+                    <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
+                      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-[width]"
+                          style={{
+                            width: `${previewDuration > 0 ? (previewCurrentTime / previewDuration) * 100 : 0}%`
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-xs text-emerald-400">
+                          {formatDuration(Math.floor(previewCurrentTime || 0))}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void togglePreviewPlayback()}
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400"
+                        >
+                          {isPreviewPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+                        </button>
+                        <span className="font-mono text-xs text-emerald-400">
+                          {formatDuration(Math.floor(previewDuration || videoDetails?.duration || selectedVideo.duration || 0))}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <button
