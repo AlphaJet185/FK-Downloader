@@ -1,6 +1,33 @@
 import type { ApiRequest, ApiResponse } from './types';
 import youtubedl from 'youtube-dl-exec';
 
+function buildQualityLabel(format: any) {
+  if (format.vcodec === 'none') {
+    if (format.abr || format.tbr) {
+      return `${Math.round(format.abr || format.tbr)} kbps`;
+    }
+    return 'Audio';
+  }
+
+  if (format.height) {
+    return `${format.height}p`;
+  }
+
+  return format.format_note || format.format || 'Video';
+}
+
+function uniqueBy<T>(items: T[], getKey: (item: T) => string) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const { url } = req.query;

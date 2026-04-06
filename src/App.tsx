@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
-  Copy,
   Download,
   Loader2,
   MessageSquare,
   Mic,
   Music,
+  Pause,
+  Play,
   Radio,
   Search,
   UploadCloud,
@@ -51,6 +52,7 @@ interface VideoDetails {
   duration: number;
   thumbnail: string;
   url: string;
+  previewUrl?: string;
   audioFormats: FormatOption[];
   videoFormats: FormatOption[];
 }
@@ -82,7 +84,8 @@ function parseJsonSafely(text: string) {
 
 function extractYouTubeVideoId(input: string) {
   try {
-    const url = new URL(input.trim());
+    const trimmed = input.trim();
+    const url = new URL(trimmed);
     const hostname = url.hostname.replace(/^www\./, '');
 
     if (hostname === 'youtu.be') {
@@ -92,14 +95,26 @@ function extractYouTubeVideoId(input: string) {
     if (
       hostname === 'youtube.com' ||
       hostname === 'm.youtube.com' ||
-      hostname === 'music.youtube.com'
+      hostname === 'music.youtube.com' ||
+      hostname === 'youtube-nocookie.com'
     ) {
+      const watchId = url.searchParams.get('v');
+      if (watchId) {
+        return watchId;
+      }
+
       if (url.pathname === '/watch') {
         return url.searchParams.get('v');
       }
 
       const pathParts = url.pathname.split('/').filter(Boolean);
-      if (pathParts[0] === 'shorts' || pathParts[0] === 'embed') {
+      if (
+        pathParts[0] === 'shorts' ||
+        pathParts[0] === 'embed' ||
+        pathParts[0] === 'live' ||
+        pathParts[0] === 'v' ||
+        pathParts[0] === 'e'
+      ) {
         return pathParts[1] || null;
       }
     }
@@ -107,6 +122,15 @@ function extractYouTubeVideoId(input: string) {
     return null;
   } catch {
     return null;
+  }
+}
+
+function looksLikeUrl(input: string) {
+  try {
+    new URL(input.trim());
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -130,6 +154,8 @@ export default function App() {
   const suggestTimeoutRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -144,6 +170,11 @@ export default function App() {
 
   useEffect(() => {
     if (!query.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    if (looksLikeUrl(query)) {
       setSuggestions([]);
       return;
     }
@@ -174,8 +205,17 @@ export default function App() {
     return () => {
       mediaRecorderRef.current?.stop?.();
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      previewVideoRef.current?.pause();
     };
   }, []);
+
+  useEffect(() => {
+    if (previewVideoRef.current) {
+      previewVideoRef.current.pause();
+      previewVideoRef.current.currentTime = 0;
+    }
+    setIsPreviewPlaying(false);
+  }, [selectedVideo?.id, videoDetails?.previewUrl]);
 
   const handleSearch = async (searchQuery: string = query) => {
     const trimmedQuery = searchQuery.trim();
@@ -283,6 +323,7 @@ export default function App() {
         duration: Number(payload?.duration || video.duration || 0),
         thumbnail: payload?.thumbnail || video.thumbnail || fallbackThumbnail(video.id),
         url: payload?.url || video.url,
+        previewUrl: payload?.previewUrl || '',
         audioFormats: Array.isArray(payload?.audioFormats) ? payload.audioFormats : [],
         videoFormats: Array.isArray(payload?.videoFormats) ? payload.videoFormats : []
       });
@@ -402,15 +443,22 @@ export default function App() {
     await openDownloadUrl(format.url);
   };
 
-  const copyVideoLink = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setStatus('Link copied');
-      window.setTimeout(() => setStatus('Idle'), 1500);
-    } catch {
-      setStatus('Copy failed');
-      window.setTimeout(() => setStatus('Idle'), 1500);
+  const togglePreviewPlayback = async () => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    if (player.paused) {
+      try {
+        await player.play();
+        setIsPreviewPlaying(true);
+      } catch {
+        setIsPreviewPlaying(false);
+      }
+      return;
     }
+
+    player.pause();
+    setIsPreviewPlaying(false);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -487,7 +535,7 @@ export default function App() {
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
-                  setShowSuggestions(true);
+                  setShowSuggestions(!looksLikeUrl(e.target.value));
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -662,14 +710,6 @@ export default function App() {
                           <Music className="h-4 w-4" />
                           Open on YouTube
                         </button>
-
-                        <button
-                          onClick={() => void copyVideoLink(selectedVideo.url)}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
-                        >
-                          <Copy className="h-4 w-4" />
-                          Copy Link
-                        </button>
                       </div>
                     </div>
                   )}
@@ -677,16 +717,44 @@ export default function App() {
               </div>
 
               <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
-                <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
-                  <img
-                    src={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
-                    alt={videoDetails?.title || selectedVideo.title}
-                    className="h-auto w-full object-contain"
-                    onError={(e) => {
-                      e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
-                    }}
-                  />
-                </div>
+                {videoDetails?.previewUrl ? (
+                  <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                    <video
+                      ref={previewVideoRef}
+                      src={videoDetails.previewUrl}
+                      poster={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
+                      className="aspect-video w-full bg-black object-contain"
+                      playsInline
+                      preload="none"
+                      onPlay={() => setIsPreviewPlaying(true)}
+                      onPause={() => setIsPreviewPlaying(false)}
+                      onEnded={() => setIsPreviewPlaying(false)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void togglePreviewPlayback()}
+                      className="flex w-full items-center justify-center gap-2 border-t border-zinc-800/70 bg-zinc-950 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-zinc-900"
+                    >
+                      {isPreviewPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                      {isPreviewPlaying ? 'Pause Preview' : 'Play Preview'}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openVideo(videoDetails?.url || selectedVideo.url)}
+                    className="mb-4 block w-full overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg transition-transform hover:-translate-y-1"
+                  >
+                    <img
+                      src={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
+                      alt={videoDetails?.title || selectedVideo.title}
+                      className="h-auto w-full object-contain"
+                      onError={(e) => {
+                        e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
+                      }}
+                    />
+                  </button>
+                )}
                 <h2 className="mb-2 font-bold text-emerald-100">{videoDetails?.title || selectedVideo.title}</h2>
                 <p className="mb-1 text-sm font-medium text-emerald-500">{videoDetails?.channel || selectedVideo.channel}</p>
                 <p className="font-mono text-xs text-emerald-700">
@@ -698,10 +766,11 @@ export default function App() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {results.map((result) => (
-              <div
+              <button
+                type="button"
                 key={result.id}
                 onClick={() => handleVideoClick(result)}
-                className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 transition-all hover:-translate-y-1 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 text-left transition-all hover:-translate-y-1 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
               >
                 <div className="relative aspect-video bg-zinc-950">
                   <img
@@ -724,7 +793,7 @@ export default function App() {
                   <p className="mb-2 flex-1 text-sm text-emerald-600/80">{result.channel}</p>
                   <div className="mt-auto text-xs font-medium text-emerald-500/50">Click to preview options</div>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         )}

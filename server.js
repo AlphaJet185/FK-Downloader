@@ -7,6 +7,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { Readable } from "node:stream";
 
 dotenv.config();
 
@@ -50,21 +51,36 @@ function normalizeInfoFormats(formats = [], sourceUrl = "") {
     .map((format) => ({
       itag: format.format_id,
       qualityLabel:
-        format.format_note ||
-        format.format ||
-        (format.vcodec !== "none" ? "Video" : "Audio"),
+        format.vcodec === "none"
+          ? format.abr || format.tbr
+            ? `${Math.round(format.abr || format.tbr)} kbps`
+            : "Audio"
+          : format.height
+            ? `${format.height}p`
+            : format.format_note || format.format || "Video",
       bitrate: format.tbr || format.vbr || format.abr || 0,
       mimeType: format.ext
         ? `${format.vcodec !== "none" ? "video" : "audio"}/${format.ext}`
         : undefined,
       hasVideo: format.vcodec !== "none",
       hasAudio: format.acodec !== "none",
+      height: Number(format.height || 0),
       contentLength:
         format.filesize || format.filesize_approx
           ? `${(Number(format.filesize || format.filesize_approx) / (1024 * 1024)).toFixed(2)}M`
           : "Unknown",
       url: `/api/download?url=${encodeURIComponent(sourceUrl)}&itag=${encodeURIComponent(format.format_id || "")}`,
     }));
+}
+
+function uniqueBy(items = [], getKey) {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = getKey(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function pickDirectDownloadUrl(info) {
@@ -92,6 +108,63 @@ function pickDirectDownloadUrl(info) {
   );
 
   return audioOnly?.url || "";
+}
+
+function sanitizeFileName(input = "") {
+  return (
+    input
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || "download"
+  );
+}
+
+function pickRequestedFormat(info, type, itag = "") {
+  const formats = Array.isArray(info?.formats)
+    ? info.formats.filter((format) => format?.url && format?.ext !== "webm")
+    : [];
+
+  if (itag) {
+    return (
+      formats.find((format) => String(format?.format_id || "") === itag) || null
+    );
+  }
+
+  if (type === "audio") {
+    return (
+      formats
+        .filter((format) => format.vcodec === "none" && format.acodec !== "none")
+        .sort(
+          (a, b) => (b.abr || b.tbr || 0) - (a.abr || a.tbr || 0),
+        )[0] || null
+    );
+  }
+
+  return (
+    formats
+      .filter(
+        (format) =>
+          format.vcodec !== "none" &&
+          format.acodec !== "none" &&
+          format.ext === "mp4",
+      )
+      .sort(
+        (a, b) =>
+          (b.height || 0) - (a.height || 0) ||
+          (b.tbr || 0) - (a.tbr || 0),
+      )[0] ||
+    formats
+      .filter(
+        (format) =>
+          format.vcodec !== "none" && format.acodec !== "none",
+      )
+      .sort(
+        (a, b) =>
+          (b.height || 0) - (a.height || 0) ||
+          (b.tbr || 0) - (a.tbr || 0),
+      )[0] ||
+    null
+  );
 }
 
 function getStableThumbnail(videoId, fallback = "") {
@@ -371,26 +444,66 @@ app.get("/api/info", async (req, res) => {
       info.formats || [],
       info.webpage_url || info.original_url || url,
     );
-    const audioFormats = formats
-      .filter(
-        (format) =>
-          !format.hasVideo &&
-          format.hasAudio &&
-          format.mimeType?.includes("m4a")
-      )
-      .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-    const videoFormats = formats
-      .filter(
-        (format) =>
-          format.hasVideo &&
-          format.hasAudio &&
-          format.mimeType?.includes("mp4")
-      )
-      .sort((a, b) => {
-        const aRes = parseInt(a.qualityLabel, 10) || 0;
-        const bRes = parseInt(b.qualityLabel, 10) || 0;
-        return bRes - aRes;
-      });
+    const sourceUrl = info.webpage_url || info.original_url || url;
+    const m4aFormats = uniqueBy(
+      formats
+        .filter(
+          (format) =>
+            !format.hasVideo &&
+            format.hasAudio &&
+            (format.mimeType?.includes("m4a") || format.mimeType?.includes("mp4"))
+        )
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0)),
+      (format) => `${Math.round(format.bitrate || 0)}-${format.mimeType || ""}`,
+    ).map((format) => ({
+      ...format,
+      mimeType: "audio/mp4",
+      url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp4&itag=${encodeURIComponent(format.itag)}`,
+    }));
+
+    const bestAudioBitrate = m4aFormats[0]?.bitrate || 0;
+    const audioFormats = [
+      {
+        itag: "mp3",
+        qualityLabel: bestAudioBitrate ? `MP3 ${Math.round(bestAudioBitrate)} kbps` : "MP3",
+        bitrate: bestAudioBitrate,
+        mimeType: "audio/mp3",
+        hasVideo: false,
+        hasAudio: true,
+        height: 0,
+        contentLength: m4aFormats[0]?.contentLength || "Unknown",
+        url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp3`,
+      },
+      ...m4aFormats,
+    ];
+
+    const videoFormats = uniqueBy(
+      formats
+        .filter((format) => format.hasVideo && format.mimeType?.includes("mp4"))
+        .sort((a, b) => {
+          const heightDiff = (b.height || 0) - (a.height || 0);
+          if (heightDiff !== 0) return heightDiff;
+          return (b.bitrate || 0) - (a.bitrate || 0);
+        }),
+      (format) => `${format.height || format.qualityLabel}-${format.mimeType || ""}`,
+    ).map((format) => ({
+      ...format,
+      url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(format.itag)}`,
+    }));
+
+    const previewFormat =
+      formats
+        .filter(
+          (format) =>
+            format.hasVideo &&
+            format.hasAudio &&
+            format.mimeType?.includes("mp4"),
+        )
+        .sort((a, b) => {
+          const heightDiff = (b.height || 0) - (a.height || 0);
+          if (heightDiff !== 0) return heightDiff;
+          return (b.bitrate || 0) - (a.bitrate || 0);
+        })[0] || null;
 
     return res.json({
       id: info.id,
@@ -399,6 +512,9 @@ app.get("/api/info", async (req, res) => {
       duration: Number(info.duration || 0),
       thumbnail: info.thumbnails?.at(-1)?.url || info.thumbnail,
       url: info.webpage_url || info.original_url || url,
+      previewUrl: previewFormat
+        ? `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(previewFormat.itag)}&preview=1`
+        : "",
       audioFormats,
       videoFormats,
     });
@@ -452,8 +568,12 @@ app.get("/api/download", async (req, res) => {
   const url = normalizeVideoUrl(rawUrl);
   const rawType = firstArrayValue(req.query.type);
   const rawItag = firstArrayValue(req.query.itag);
+  const rawAudioFormat = firstArrayValue(req.query.audioFormat);
+  const rawPreview = firstArrayValue(req.query.preview);
   const type = rawType === "audio" ? "audio" : "video";
   const itag = typeof rawItag === "string" ? rawItag.trim() : "";
+  const audioFormat = rawAudioFormat === "mp3" ? "mp3" : "mp4";
+  const isPreview = rawPreview === "1";
 
   if (!url) {
     return res.status(400).json({ error: "URL required" });
@@ -472,6 +592,53 @@ app.get("/api/download", async (req, res) => {
       throw new Error("yt-dlp returned an unexpected payload");
     }
 
+    const selectedFormat = pickRequestedFormat(probeInfo, type, itag);
+    const canStreamDirectly =
+      !!selectedFormat?.url &&
+      ((type === "audio" && audioFormat === "mp4") ||
+        (type === "video" &&
+          selectedFormat?.acodec &&
+          selectedFormat.acodec !== "none"));
+
+    if (canStreamDirectly) {
+      const ext =
+        selectedFormat?.ext || (type === "audio" ? "m4a" : "mp4");
+      const fileName = `${sanitizeFileName(probeInfo.title || "download")}.${ext}`;
+      const upstreamResponse = await fetch(selectedFormat.url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+        },
+      });
+
+      if (!upstreamResponse.ok || !upstreamResponse.body) {
+        throw new Error(
+          `Media request failed with status ${upstreamResponse.status}`,
+        );
+      }
+
+      res.setHeader(
+        "Content-Type",
+        upstreamResponse.headers.get("content-type") ||
+          downloadContentType(`file.${ext}`),
+      );
+      if (!isPreview) {
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${fileName.replace(/"/g, "")}"`,
+        );
+      }
+
+      const contentLength = upstreamResponse.headers.get("content-length");
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      res.setHeader("X-Download-Title", probeInfo.title || "download");
+      res.setHeader("X-Download-Type", type);
+
+      return Readable.fromWeb(upstreamResponse.body).pipe(res);
+    }
+
     const tempDir = path.join(
       os.tmpdir(),
       `fk-downloader-${Date.now()}-${crypto.randomUUID()}`
@@ -480,27 +647,35 @@ app.get("/api/download", async (req, res) => {
 
     await fsp.mkdir(tempDir, { recursive: true });
 
+    let formatSelector = "";
+
+    if (type === "audio") {
+      formatSelector = itag ? itag : "bestaudio[ext=m4a]/bestaudio";
+    } else if (selectedFormat?.acodec && selectedFormat.acodec !== "none") {
+      formatSelector = itag || "best[ext=mp4]/best";
+    } else if (itag) {
+      formatSelector = `${itag}+bestaudio[ext=m4a]/${itag}+bestaudio/${itag}`;
+    } else {
+      formatSelector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]";
+    }
+
     const downloadOptions = {
       output: outputTemplate,
       noWarnings: true,
       noCheckCertificates: true,
       preferFreeFormats: false,
       youtubeSkipDashManifest: true,
-      format: itag
-        ? itag
-        : type === "audio"
-          ? "bestaudio[ext=m4a]/bestaudio"
-          : "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]",
-      ...(!itag
+      format: formatSelector,
+      ...(type === "video"
         ? {
             mergeOutputFormat: "mp4",
-            ...(type === "audio"
-              ? {
-                  extractAudio: true,
-                  audioFormat: "mp3",
-                  audioQuality: "0",
-                }
-              : {}),
+          }
+        : {}),
+      ...(type === "audio" && audioFormat === "mp3"
+        ? {
+            extractAudio: true,
+            audioFormat: "mp3",
+            audioQuality: "0",
           }
         : {}),
     };
@@ -520,12 +695,15 @@ app.get("/api/download", async (req, res) => {
       throw new Error("Download file was not created");
     }
 
-    const downloadName = path.basename(targetFile);
+    const downloadedExt = path.extname(targetFile) || ".mp4";
+    const downloadName = `${sanitizeFileName(probeInfo.title || "download")}${downloadedExt}`;
     res.setHeader("Content-Type", downloadContentType(downloadName));
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${downloadName.replace(/"/g, "")}"`
-    );
+    if (!isPreview) {
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${downloadName.replace(/"/g, "")}"`
+      );
+    }
     res.setHeader("X-Download-Title", probeInfo.title || "download");
     res.setHeader("X-Download-Type", type);
 
