@@ -63,24 +63,96 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       url: `/api/download?url=${encodeURIComponent(url)}&itag=${f.format_id}`
     }));
 
+    const sourceUrl = info.webpage_url || info.original_url || url;
+    const playbackFormats = (info.formats || [])
+      .filter((format: any) => format?.url && format.ext !== 'webm')
+      .map((format: any) => ({
+        itag: String(format.format_id || ''),
+        qualityLabel: buildQualityLabel(format),
+        bitrate: format.tbr || format.vbr || format.abr || 0,
+        mimeType: format.ext
+          ? `${format.vcodec !== 'none' ? 'video' : 'audio'}/${format.ext}`
+          : undefined,
+        hasVideo: format.vcodec !== 'none',
+        hasAudio: format.acodec !== 'none',
+        height: Number(format.height || 0),
+        contentLength:
+          format.filesize || format.filesize_approx
+            ? `${(Number(format.filesize || format.filesize_approx) / (1024 * 1024)).toFixed(2)}M`
+            : 'Unknown',
+        url: `/api/download?url=${encodeURIComponent(sourceUrl)}&itag=${encodeURIComponent(String(format.format_id || ''))}`
+      }));
+
+    const m4aFormats = uniqueBy(
+      playbackFormats
+        .filter(
+          (format: any) =>
+            !format.hasVideo &&
+            format.hasAudio &&
+            (format.mimeType?.includes('m4a') || format.mimeType?.includes('mp4'))
+        )
+        .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)),
+      (format: any) => `${Math.round(format.bitrate || 0)}-${format.mimeType || ''}`
+    ).map((format: any) => ({
+      ...format,
+      mimeType: 'audio/mp4',
+      url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp4&itag=${encodeURIComponent(format.itag)}`
+    }));
+
+    const bestAudioBitrate = m4aFormats[0]?.bitrate || 0;
+    const audioFormats = [
+      {
+        itag: 'mp3',
+        qualityLabel: bestAudioBitrate ? `MP3 ${Math.round(bestAudioBitrate)} kbps` : 'MP3',
+        bitrate: bestAudioBitrate,
+        mimeType: 'audio/mp3',
+        hasVideo: false,
+        hasAudio: true,
+        height: 0,
+        contentLength: m4aFormats[0]?.contentLength || 'Unknown',
+        url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp3`
+      },
+      ...m4aFormats
+    ];
+
+    const videoFormats = uniqueBy(
+      playbackFormats
+        .filter((format: any) => format.hasVideo && format.mimeType?.includes('mp4'))
+        .sort((a: any, b: any) => {
+          const heightDiff = (b.height || 0) - (a.height || 0);
+          if (heightDiff !== 0) return heightDiff;
+          return (b.bitrate || 0) - (a.bitrate || 0);
+        }),
+      (format: any) => `${format.height || format.qualityLabel}-${format.mimeType || ''}`
+    ).map((format: any) => ({
+      ...format,
+      url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(format.itag)}`
+    }));
+
+    const previewFormat =
+      playbackFormats
+        .filter(
+          (format: any) =>
+            format.hasVideo &&
+            format.hasAudio &&
+            format.mimeType?.includes('mp4')
+        )
+        .sort((a: any, b: any) => {
+          const heightDiff = (b.height || 0) - (a.height || 0);
+          if (heightDiff !== 0) return heightDiff;
+          return (b.bitrate || 0) - (a.bitrate || 0);
+        })[0] || null;
+
     res.json({
       id: info.id,
       title: info.title,
       channel: info.channel || info.uploader || '',
       duration: Number(info.duration || 0),
-
-      audioFormats: formats
-        .filter(f => !f.hasVideo && f.hasAudio && f.mimeType?.includes("m4a"))
-        .sort((a,b) => (b.bitrate||0)-(a.bitrate||0)),
-
-
-      videoFormats: formats
-        .filter(f => f.hasVideo && f.hasAudio && f.mimeType?.includes("mp4"))
-        .sort((a,b) => {
-        const aRes = parseInt(a.qualityLabel) || 0;
-        const bRes = parseInt(b.qualityLabel) || 0;
-        return bRes - aRes;
-      }),
+      previewUrl: previewFormat
+        ? `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(previewFormat.itag)}&preview=1`
+        : '',
+      audioFormats,
+      videoFormats,
 
       thumbnail: info.thumbnails?.at(-1)?.url || info.thumbnail,
 

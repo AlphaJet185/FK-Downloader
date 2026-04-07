@@ -433,7 +433,6 @@ app.get("/api/info", async (req, res) => {
       noWarnings: true,
       preferFreeFormats: false,
       noCheckCertificates: true,
-      youtubeSkipDashManifest: true,
     });
 
     if (!info || typeof info === "string") {
@@ -585,7 +584,6 @@ app.get("/api/download", async (req, res) => {
       noWarnings: true,
       noCheckCertificates: true,
       preferFreeFormats: false,
-      youtubeSkipDashManifest: true,
     });
 
     if (!probeInfo || typeof probeInfo === "string") {
@@ -686,7 +684,6 @@ app.get("/api/download", async (req, res) => {
       noWarnings: true,
       noCheckCertificates: true,
       preferFreeFormats: false,
-      youtubeSkipDashManifest: true,
       format: formatSelector,
       ...(type === "video"
         ? {
