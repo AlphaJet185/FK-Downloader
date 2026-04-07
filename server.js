@@ -45,8 +45,6 @@ if (isProduction) {
       middlewareMode: true,
     },
   });
-
-  app.use(vite.middlewares);
 }
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
@@ -935,6 +933,16 @@ app.get("/api/download", async (req, res) => {
     });
   }
 });
+
+if (vite) {
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+
+    return vite.middlewares(req, res, next);
+  });
+}
 
 app.use(async (req, res, next) => {
   if (req.method !== "GET" || req.path.startsWith("/api/")) {
