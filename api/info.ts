@@ -116,7 +116,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const videoFormats = uniqueBy(
       playbackFormats
-        .filter((format: any) => format.hasVideo && format.mimeType?.includes('mp4'))
+        .filter(
+          (format: any) =>
+            format.hasVideo &&
+            format.hasAudio &&
+            format.mimeType?.includes('mp4')
+        )
         .sort((a: any, b: any) => {
           const heightDiff = (b.height || 0) - (a.height || 0);
           if (heightDiff !== 0) return heightDiff;

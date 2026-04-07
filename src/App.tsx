@@ -190,6 +190,7 @@ export default function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
 
@@ -251,6 +252,7 @@ export default function App() {
       previewVideoRef.current.currentTime = 0;
     }
     setIsPreviewPlaying(false);
+    setIsPreviewLoading(false);
     setPreviewCurrentTime(0);
     setPreviewDuration(0);
   }, [selectedVideo?.id, videoDetails?.previewUrl]);
@@ -551,17 +553,19 @@ export default function App() {
     if (!player) return;
 
     if (player.paused) {
+      setIsPreviewLoading(true);
       try {
         await player.play();
-        setIsPreviewPlaying(true);
       } catch {
         setIsPreviewPlaying(false);
+        setIsPreviewLoading(false);
       }
       return;
     }
 
     player.pause();
     setIsPreviewPlaying(false);
+    setIsPreviewLoading(false);
   };
 
   const handlePreviewTimeUpdate = () => {
@@ -577,6 +581,16 @@ export default function App() {
     if (!player) return;
 
     setPreviewDuration(player.duration || videoDetails?.duration || selectedVideo?.duration || 0);
+  };
+
+  const handlePreviewPlaying = () => {
+    setIsPreviewPlaying(true);
+    setIsPreviewLoading(false);
+  };
+
+  const handlePreviewPause = () => {
+    setIsPreviewPlaying(false);
+    setIsPreviewLoading(false);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -902,19 +916,36 @@ export default function App() {
               <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
                 {videoDetails?.previewUrl ? (
                   <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
-                    <video
-                      ref={previewVideoRef}
-                      src={videoDetails.previewUrl}
-                      poster={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
-                      className="aspect-video w-full bg-black object-contain"
-                      playsInline
-                      preload="none"
-                      onLoadedMetadata={handlePreviewMetadata}
-                      onTimeUpdate={handlePreviewTimeUpdate}
-                      onPlay={() => setIsPreviewPlaying(true)}
-                      onPause={() => setIsPreviewPlaying(false)}
-                      onEnded={() => setIsPreviewPlaying(false)}
-                    />
+                    <div className="relative">
+                      <video
+                        ref={previewVideoRef}
+                        src={videoDetails.previewUrl}
+                        poster={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
+                        className="aspect-video w-full bg-black object-contain"
+                        playsInline
+                        preload="none"
+                        onLoadedMetadata={handlePreviewMetadata}
+                        onTimeUpdate={handlePreviewTimeUpdate}
+                        onPlay={() => setIsPreviewLoading(true)}
+                        onWaiting={() => setIsPreviewLoading(true)}
+                        onPlaying={handlePreviewPlaying}
+                        onPause={handlePreviewPause}
+                        onEnded={() => {
+                          setIsPreviewPlaying(false);
+                          setIsPreviewLoading(false);
+                        }}
+                        onError={() => {
+                          setIsPreviewPlaying(false);
+                          setIsPreviewLoading(false);
+                        }}
+                      />
+                      {isPreviewLoading && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-emerald-200">
+                          <Loader2 className="h-7 w-7 animate-spin" />
+                          <span className="text-sm font-medium">Loading preview...</span>
+                        </div>
+                      )}
+                    </div>
                     <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
                       <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
                         <div
@@ -931,9 +962,16 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => void togglePreviewPlayback()}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400"
+                          disabled={isPreviewLoading}
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
                         >
-                          {isPreviewPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+                          {isPreviewLoading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : isPreviewPlaying ? (
+                            <Pause className="h-5 w-5" />
+                          ) : (
+                            <Play className="ml-0.5 h-5 w-5" />
+                          )}
                         </button>
                         <span className="font-mono text-xs text-emerald-400">
                           {formatDuration(Math.floor(previewDuration || videoDetails?.duration || selectedVideo.duration || 0))}

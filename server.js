@@ -662,7 +662,12 @@ app.get("/api/info", async (req, res) => {
 
     const videoFormats = uniqueBy(
       formats
-        .filter((format) => format.hasVideo && format.mimeType?.includes("mp4"))
+        .filter(
+          (format) =>
+            format.hasVideo &&
+            format.hasAudio &&
+            format.mimeType?.includes("mp4"),
+        )
         .sort((a, b) => {
           const heightDiff = (b.height || 0) - (a.height || 0);
           if (heightDiff !== 0) return heightDiff;
