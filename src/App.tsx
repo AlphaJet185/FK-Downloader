@@ -186,6 +186,7 @@ export default function App() {
   const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
 
   const suggestTimeoutRef = useRef<number | null>(null);
+  const suggestAbortRef = useRef<AbortController | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -206,12 +207,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!query.trim()) {
+    const trimmedQuery = query.trim();
+
+    if (!trimmedQuery) {
+      suggestAbortRef.current?.abort();
       setSuggestions([]);
       return;
     }
 
-    if (looksLikeUrl(query)) {
+    if (looksLikeUrl(trimmedQuery)) {
+      suggestAbortRef.current?.abort();
       setSuggestions([]);
       return;
     }
@@ -220,14 +225,33 @@ export default function App() {
       window.clearTimeout(suggestTimeoutRef.current);
     }
 
+    suggestAbortRef.current?.abort();
+
     suggestTimeoutRef.current = window.setTimeout(async () => {
+      const controller = new AbortController();
+      suggestAbortRef.current = controller;
+
       try {
-        const res = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`/api/suggest?q=${encodeURIComponent(trimmedQuery)}`, {
+          signal: controller.signal
+        });
         const text = await res.text();
         const data = parseJsonSafely(text);
-        setSuggestions(Array.isArray(data) ? data : []);
-      } catch {
-        setSuggestions([]);
+        if (query.trim() !== trimmedQuery) {
+          return;
+        }
+
+        const nextSuggestions = Array.isArray(data) ? data : [];
+        setSuggestions(nextSuggestions);
+        setShowSuggestions(nextSuggestions.length > 0);
+      } catch (error: any) {
+        if (error?.name === 'AbortError') {
+          return;
+        }
+
+        if (query.trim() === trimmedQuery) {
+          setSuggestions([]);
+        }
       }
     }, 250);
 
@@ -235,6 +259,7 @@ export default function App() {
       if (suggestTimeoutRef.current) {
         window.clearTimeout(suggestTimeoutRef.current);
       }
+      suggestAbortRef.current?.abort();
     };
   }, [query]);
 
@@ -668,6 +693,11 @@ export default function App() {
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setShowSuggestions(!looksLikeUrl(e.target.value));
+                }}
+                onFocus={() => {
+                  if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
