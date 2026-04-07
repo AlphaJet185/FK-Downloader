@@ -15,7 +15,7 @@ import {
   WifiOff
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
-import { downloadVideo, openDownloadUrl } from './download';
+import { downloadVideo, openDownloadUrl, type DownloadProgress } from './download';
 
 interface SearchResult {
   id: string;
@@ -57,10 +57,43 @@ interface VideoDetails {
   videoFormats: FormatOption[];
 }
 
+interface DownloadState extends DownloadProgress {
+  key: string;
+  label: string;
+}
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 B';
+  }
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function downloadPhaseLabel(phase: DownloadProgress['phase']) {
+  switch (phase) {
+    case 'downloading':
+      return 'Downloading file...';
+    case 'saving':
+      return 'Finalizing file...';
+    default:
+      return 'Preparing download...';
+  }
 }
 
 function fallbackThumbnail(videoId: string) {
@@ -150,6 +183,7 @@ export default function App() {
   const [recognition, setRecognition] = useState<RecognitionResult | null>(null);
   const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -439,12 +473,77 @@ export default function App() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const runDownload = async (
+    key: string,
+    label: string,
+    task: (onProgress: (progress: DownloadProgress) => void) => Promise<void>
+  ) => {
+    setError('');
+    setStatus('Preparing download');
+    setDownloadState({
+      key,
+      label,
+      phase: 'starting',
+      receivedBytes: 0,
+      totalBytes: null
+    });
+
+    try {
+      await task((progress) => {
+        setDownloadState({
+          key,
+          label,
+          ...progress
+        });
+
+        if (progress.phase === 'downloading') {
+          setStatus('Downloading');
+        } else if (progress.phase === 'saving') {
+          setStatus('Finalizing');
+        } else {
+          setStatus('Preparing download');
+        }
+      });
+
+      setStatus('Download ready');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    } catch (err: any) {
+      setError(err?.message || 'Download failed.');
+      setStatus('Idle');
+    } finally {
+      setDownloadState(null);
+    }
+  };
+
   const handleDownload = async (url: string) => {
-    await downloadVideo(url);
+    const fastVideoFormat = videoDetails?.videoFormats?.find((format) => format.hasAudio);
+
+    await runDownload(
+      'quick-download',
+      fastVideoFormat
+        ? `Quick download ${fastVideoFormat.qualityLabel}`
+        : 'Quick download',
+      async (onProgress) => {
+        if (fastVideoFormat) {
+          await openDownloadUrl(fastVideoFormat.url, onProgress);
+          return;
+        }
+
+        await downloadVideo(url, 'video', onProgress);
+      }
+    );
   };
 
   const handleFormatDownload = async (format: FormatOption) => {
-    await openDownloadUrl(format.url);
+    const extension = format.mimeType ? format.mimeType.split('/')[1] : 'file';
+    const typeLabel = format.hasVideo ? 'Video' : 'Audio';
+    await runDownload(
+      `${typeLabel.toLowerCase()}-${format.itag}`,
+      `${typeLabel} ${format.qualityLabel} (${extension})`,
+      async (onProgress) => {
+        await openDownloadUrl(format.url, onProgress);
+      }
+    );
   };
 
   const togglePreviewPlayback = async () => {
@@ -624,6 +723,46 @@ export default function App() {
           </div>
         )}
 
+        {downloadState && (
+          <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {downloadPhaseLabel(downloadState.phase)}
+            </div>
+            <div className="mt-1 text-sm text-emerald-400">{downloadState.label}</div>
+
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-900/70">
+              <div
+                className={`h-full rounded-full bg-emerald-500 ${
+                  downloadState.totalBytes ? 'transition-[width] duration-200' : 'w-1/3 animate-pulse'
+                }`}
+                style={
+                  downloadState.totalBytes
+                    ? {
+                        width: `${Math.max(
+                          6,
+                          Math.min(100, (downloadState.receivedBytes / downloadState.totalBytes) * 100)
+                        )}%`
+                      }
+                    : undefined
+                }
+              />
+            </div>
+
+            <div className="mt-2 flex items-center justify-between gap-3 text-xs text-emerald-500">
+              <span>
+                {formatBytes(downloadState.receivedBytes)}
+                {downloadState.totalBytes ? ` / ${formatBytes(downloadState.totalBytes)}` : ''}
+              </span>
+              <span>
+                {downloadState.totalBytes
+                  ? `${Math.min(100, Math.round((downloadState.receivedBytes / downloadState.totalBytes) * 100))}%`
+                  : 'Working...'}
+              </span>
+            </div>
+          </div>
+        )}
+
         {selectedVideo ? (
           <div className="space-y-6">
             <button
@@ -669,9 +808,17 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => void handleFormatDownload(format)}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
+                                disabled={Boolean(downloadState)}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
                               >
-                                Download
+                                {downloadState?.key === `audio-${format.itag}` ? (
+                                  <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
+                                  </span>
+                                ) : (
+                                  'Download'
+                                )}
                               </button>
                             </div>
                           ))}
@@ -701,9 +848,17 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => void handleFormatDownload(format)}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500"
+                                disabled={Boolean(downloadState)}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
                               >
-                                Download
+                                {downloadState?.key === `video-${format.itag}` ? (
+                                  <span className="flex items-center gap-2">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
+                                  </span>
+                                ) : (
+                                  'Download'
+                                )}
                               </button>
                             </div>
                           ))}
@@ -716,10 +871,19 @@ export default function App() {
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
                           onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                          disabled={Boolean(downloadState)}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-wait disabled:opacity-60"
                         >
-                          <Download className="h-4 w-4" />
-                          Quick Download
+                          {downloadState?.key === 'quick-download' ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                          {downloadState?.key === 'quick-download'
+                            ? downloadState.phase === 'saving'
+                              ? 'Saving...'
+                              : 'Downloading...'
+                            : 'Quick Download'}
                         </button>
 
                         <button

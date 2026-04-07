@@ -33,7 +33,7 @@ function parseYtDlpOutput(stdout: string): any {
     return '';
   }
 
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+  if (trimmed.startsWith('{')) {
     return JSON.parse(trimmed);
   }
 
