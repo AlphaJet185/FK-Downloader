@@ -7,15 +7,47 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
 
 dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+const isProduction = process.env.NODE_ENV === "production";
+const YT_DLP_SCRIPT_PATH = path.resolve("bin", "yt-dlp");
+const YT_DLP_TEMP_DIR = path.resolve(".tmp", "yt-dlp");
+const YT_DLP_HEADER_VALUES = [
+  "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+  "Referer: https://www.youtube.com/",
+];
 
 app.use(cors());
-app.use(express.static("public"));
+
+let vite = null;
+
+if (isProduction) {
+  app.use(express.static("public"));
+} else {
+  const { createServer } = await import("vite");
+  const { default: react } = await import("@vitejs/plugin-react");
+  vite = await createServer({
+    appType: "spa",
+    configFile: false,
+    cacheDir: ".tmp/vite",
+    plugins: [react()],
+    publicDir: "static",
+    build: {
+      outDir: "public",
+      emptyOutDir: true,
+    },
+    server: {
+      middlewareMode: true,
+    },
+  });
+
+  app.use(vite.middlewares);
+}
 
 const API_KEY = process.env.YOUTUBE_API_KEY;
 
@@ -26,6 +58,162 @@ function firstArrayValue(value) {
 function normalizeVideoUrl(input) {
   if (!input || typeof input !== "string") return "";
   return input.trim();
+}
+
+function objectToArgs(options = {}) {
+  const args = [];
+
+  for (const [key, value] of Object.entries(options)) {
+    const flag = `--${key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`)}`;
+
+    if (typeof value === "boolean") {
+      if (value) {
+        args.push(flag);
+      }
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        args.push(flag, String(item));
+      }
+      continue;
+    }
+
+    if (value !== undefined && value !== null && value !== "") {
+      args.push(flag, String(value));
+    }
+  }
+
+  return args;
+}
+
+function buildYtDlpOptions(extraOptions = {}) {
+  return {
+    noPlaylist: true,
+    noWarnings: true,
+    extractorRetries: 10,
+    forceIpv4: true,
+    noCheckCertificates: true,
+    addHeader: YT_DLP_HEADER_VALUES,
+    ...extraOptions,
+  };
+}
+
+function parseYtDlpOutput(stdout = "") {
+  const trimmed = stdout.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return JSON.parse(trimmed);
+  }
+
+  return trimmed;
+}
+
+function formatYtDlpError(error) {
+  const message = [error?.stderr, error?.stdout, error?.message]
+    .filter((value) => typeof value === "string" && value.trim())
+    .flatMap((value) => value.split(/\r?\n/))
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .find((line) => line.startsWith("ERROR:")) ||
+    [error?.stderr, error?.stdout, error?.message]
+      .filter((value) => typeof value === "string" && value.trim())
+      .flatMap((value) => value.split(/\r?\n/))
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1) ||
+    "yt-dlp failed";
+
+  return new Error(message.replace(/^ERROR:\s*/, ""));
+}
+
+function execFileAsync(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      {
+        maxBuffer: 50 * 1024 * 1024,
+        ...options,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          error.stdout = stdout;
+          error.stderr = stderr;
+          reject(error);
+          return;
+        }
+
+        try {
+          resolve(parseYtDlpOutput(stdout));
+        } catch (parseError) {
+          parseError.stdout = stdout;
+          parseError.stderr = stderr;
+          reject(parseError);
+        }
+      },
+    );
+  });
+}
+
+async function runRepoYtDlp(url, options = {}) {
+  await fsp.mkdir(YT_DLP_TEMP_DIR, { recursive: true });
+
+  const args = [...objectToArgs(buildYtDlpOptions(options)), url];
+  const env = {
+    ...process.env,
+    TEMP: YT_DLP_TEMP_DIR,
+    TMP: YT_DLP_TEMP_DIR,
+  };
+  const commandCandidates =
+    process.platform === "win32"
+      ? [
+          ["py", ["-3", YT_DLP_SCRIPT_PATH]],
+          ["python", [YT_DLP_SCRIPT_PATH]],
+        ]
+      : [
+          [YT_DLP_SCRIPT_PATH, []],
+          ["python3", [YT_DLP_SCRIPT_PATH]],
+          ["python", [YT_DLP_SCRIPT_PATH]],
+        ];
+
+  let lastError = null;
+
+  for (const [command, prefixArgs] of commandCandidates) {
+    try {
+      return await execFileAsync(command, [...prefixArgs, ...args], { env });
+    } catch (error) {
+      lastError = error;
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("Unable to find a Python runtime for yt-dlp");
+}
+
+async function runYtDlp(url, options = {}) {
+  if (fs.existsSync(YT_DLP_SCRIPT_PATH)) {
+    try {
+      return await runRepoYtDlp(url, options);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw formatYtDlpError(error);
+      }
+    }
+  }
+
+  try {
+    return await youtubedl(url, buildYtDlpOptions(options));
+  } catch (error) {
+    throw formatYtDlpError(error);
+  }
 }
 
 function normalizeFormats(formats = []) {
@@ -428,11 +616,9 @@ app.get("/api/info", async (req, res) => {
   }
 
   try {
-    const info = await youtubedl(url, {
+    const info = await runYtDlp(url, {
       dumpSingleJson: true,
-      noWarnings: true,
       preferFreeFormats: false,
-      noCheckCertificates: true,
     });
 
     if (!info || typeof info === "string") {
@@ -579,10 +765,8 @@ app.get("/api/download", async (req, res) => {
   }
 
   try {
-    const probeInfo = await youtubedl(url, {
+    const probeInfo = await runYtDlp(url, {
       dumpSingleJson: true,
-      noWarnings: true,
-      noCheckCertificates: true,
       preferFreeFormats: false,
     });
 
@@ -701,7 +885,7 @@ app.get("/api/download", async (req, res) => {
 
 
 
-    await youtubedl(url, downloadOptions);
+    await runYtDlp(url, downloadOptions);
 
     const downloadedFiles = (await fsp.readdir(tempDir))
       .filter((fileName) => !fileName.endsWith(".part"))
@@ -749,6 +933,30 @@ app.get("/api/download", async (req, res) => {
       error: "Download failed",
       details: error instanceof Error ? error.message : String(error),
     });
+  }
+});
+
+app.use(async (req, res, next) => {
+  if (req.method !== "GET" || req.path.startsWith("/api/")) {
+    return next();
+  }
+
+  try {
+    if (vite) {
+      const templatePath = path.resolve("index.html");
+      const template = await fsp.readFile(templatePath, "utf8");
+      const html = await vite.transformIndexHtml(req.originalUrl, template);
+      res.status(200).setHeader("Content-Type", "text/html");
+      return res.end(html);
+    }
+
+    return res.sendFile(path.resolve("public", "index.html"));
+  } catch (error) {
+    if (vite) {
+      vite.ssrFixStacktrace(error);
+    }
+
+    return next(error);
   }
 });
 

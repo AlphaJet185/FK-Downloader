@@ -1,5 +1,5 @@
 import type { ApiRequest, ApiResponse } from './types';
-import youtubedl from 'youtube-dl-exec';
+import { executeYtDlp } from './utils';
 
 function buildQualityLabel(format: any) {
   if (format.vcodec === 'none') {
@@ -37,9 +37,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    const info = await youtubedl(url, {
+    const info = await executeYtDlp(url, {
       dumpSingleJson: true,
-      noWarnings: true,
       preferFreeFormats: false,
     });
 

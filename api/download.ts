@@ -1,10 +1,10 @@
 import type { ApiRequest, ApiResponse } from './types';
-import youtubedl from 'youtube-dl-exec';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { executeYtDlp } from './utils';
 
 function sanitizeFileName(input: string) {
   return input
@@ -102,9 +102,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    const info = await youtubedl(url, {
+    const info = await executeYtDlp(url, {
       dumpSingleJson: true,
-      noWarnings: true,
       preferFreeFormats: false
     });
 
@@ -215,7 +214,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       downloadOptions.audioQuality = '0';
     }
 
-    await youtubedl(url, downloadOptions);
+    await executeYtDlp(url, downloadOptions);
 
     const downloadedFiles = (await fsp.readdir(tempDir))
       .filter((fileName) => !fileName.endsWith('.part'))
