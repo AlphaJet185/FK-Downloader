@@ -1,6 +1,8 @@
 const DOWNLOAD_API_BASE_URL =
   import.meta.env.VITE_DOWNLOAD_API_BASE_URL?.trim() || '';
 
+export const DOWNLOAD_CANCELLED_MESSAGE = 'Save cancelled.';
+
 export interface DownloadProgress {
   phase: 'starting' | 'downloading' | 'saving';
   receivedBytes: number;
@@ -122,7 +124,15 @@ async function readResponseBlob(
   };
 }
 
-function saveBlob(blob: Blob, fileName: string) {
+async function saveBlob(blob: Blob, fileName: string) {
+  if (window.electronAPI?.isDesktop) {
+    const result = await window.electronAPI.saveDownload(fileName, await blob.arrayBuffer());
+    if (result.canceled) {
+      throw new Error(DOWNLOAD_CANCELLED_MESSAGE);
+    }
+    return;
+  }
+
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
@@ -137,7 +147,7 @@ function saveBlob(blob: Blob, fileName: string) {
 
 async function startDownload(downloadUrl: string, onProgress?: DownloadProgressCallback) {
   const { blob, fileName } = await fetchDownloadBundle(downloadUrl, onProgress);
-  saveBlob(blob, fileName);
+  await saveBlob(blob, fileName);
 }
 
 async function fetchDownloadBundle(downloadUrl: string, onProgress?: DownloadProgressCallback) {

@@ -9,14 +9,50 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 
-dotenv.config();
+const modulePath = fileURLToPath(import.meta.url);
+const appRootDir = process.env.FK_APP_ROOT?.trim()
+  ? path.resolve(process.env.FK_APP_ROOT)
+  : path.dirname(modulePath);
+const runtimeRootDir = process.env.FK_RUNTIME_DIR?.trim()
+  ? path.resolve(process.env.FK_RUNTIME_DIR)
+  : path.join(os.tmpdir(), "fk-downloader");
+
+function firstExistingPath(candidates = []) {
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || "";
+}
+
+const envFilePath = firstExistingPath([
+  process.env.FK_ENV_FILE?.trim(),
+  typeof process.resourcesPath === "string"
+    ? path.join(process.resourcesPath, ".env.local")
+    : "",
+  path.join(appRootDir, ".env.local"),
+  path.join(process.cwd(), ".env.local"),
+]);
+
+if (envFilePath) {
+  dotenv.config({ path: envFilePath });
+} else {
+  dotenv.config();
+}
 
 const app = express();
-const PORT = Number(process.env.PORT || 3000);
+const DEFAULT_PORT = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === "production";
-const YT_DLP_SCRIPT_PATH = path.resolve("bin", "yt-dlp");
-const YT_DLP_TEMP_DIR = path.resolve(".tmp", "yt-dlp");
+const PUBLIC_DIR = path.join(appRootDir, "public");
+const STATIC_DIR = path.join(appRootDir, "static");
+const INDEX_HTML_PATH = path.join(appRootDir, "index.html");
+const YT_DLP_SCRIPT_PATH =
+  firstExistingPath([
+    process.env.FK_YT_DLP_PATH?.trim(),
+    typeof process.resourcesPath === "string"
+      ? path.join(process.resourcesPath, "bin", "yt-dlp")
+      : "",
+    path.join(appRootDir, "bin", "yt-dlp"),
+  ]) || path.join(appRootDir, "bin", "yt-dlp");
+const YT_DLP_TEMP_DIR = path.join(runtimeRootDir, "yt-dlp");
 const YT_DLP_HEADER_VALUES = [
   "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
   "Referer: https://www.youtube.com/",
@@ -27,18 +63,19 @@ app.use(cors());
 let vite = null;
 
 if (isProduction) {
-  app.use(express.static("public"));
+  app.use(express.static(PUBLIC_DIR));
 } else {
   const { createServer } = await import("vite");
   const { default: react } = await import("@vitejs/plugin-react");
   vite = await createServer({
+    root: appRootDir,
     appType: "spa",
     configFile: false,
-    cacheDir: ".tmp/vite",
+    cacheDir: path.join(runtimeRootDir, "vite"),
     plugins: [react()],
-    publicDir: "static",
+    publicDir: STATIC_DIR,
     build: {
-      outDir: "public",
+      outDir: PUBLIC_DIR,
       emptyOutDir: true,
     },
     server: {
@@ -956,14 +993,13 @@ app.use(async (req, res, next) => {
 
   try {
     if (vite) {
-      const templatePath = path.resolve("index.html");
-      const template = await fsp.readFile(templatePath, "utf8");
+      const template = await fsp.readFile(INDEX_HTML_PATH, "utf8");
       const html = await vite.transformIndexHtml(req.originalUrl, template);
       res.status(200).setHeader("Content-Type", "text/html");
       return res.end(html);
     }
 
-    return res.sendFile(path.resolve("public", "index.html"));
+    return res.sendFile(path.join(PUBLIC_DIR, "index.html"));
   } catch (error) {
     if (vite) {
       vite.ssrFixStacktrace(error);
@@ -973,6 +1009,82 @@ app.use(async (req, res, next) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+let serverControl = null;
+
+function listenAsync(port, host) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const onListening = () => {
+      if (settled) return;
+      settled = true;
+      server.off("error", onError);
+      resolve(server);
+    };
+    const onError = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+    const server = host
+      ? app.listen(port, host, onListening)
+      : app.listen(port, onListening);
+
+    server.once("error", onError);
+  });
+}
+
+export async function startServer(options = {}) {
+  if (serverControl) {
+    return serverControl;
+  }
+
+  const port = Number(options.port ?? DEFAULT_PORT);
+  const host =
+    typeof options.host === "string" && options.host.trim()
+      ? options.host.trim()
+      : undefined;
+  const server = await listenAsync(port, host);
+  const address = server.address();
+  const actualPort =
+    typeof address === "object" && address ? address.port : port;
+  const displayHost = host || "localhost";
+
+  serverControl = {
+    app,
+    vite,
+    server,
+    port: actualPort,
+    host: displayHost,
+    async close() {
+      if (!serverControl) {
+        return;
+      }
+
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+
+      serverControl = null;
+    },
+  };
+
+  console.log(`Server running on http://${displayHost}:${actualPort}`);
+  return serverControl;
+}
+
+export { app };
+
+const isDirectExecution = process.argv[1]
+  ? path.resolve(process.argv[1]) === modulePath
+  : false;
+
+if (isDirectExecution) {
+  await startServer();
+}

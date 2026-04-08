@@ -4,6 +4,7 @@
 .env.local
 .env.*
 dist
+release
 /Public/assets
 /Public/index.html
 node_modules

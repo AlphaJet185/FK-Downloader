@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
- "scripts": {
-  "dev": "nodemon server.js",
-  "start": "node server.js",
-  "vite": "vite",
-  "build": "vite build",
-  "build:with-yt-dlp": "vite build",
-  "preview": "vite preview",
-  "tunnel:quick": "cloudflared tunnel --url http://localhost:3000",
-  "tunnel:run": "cloudflared tunnel --config .cloudflared/config.yml run",
-  "lint": "tsc --noEmit",
-  "clean": "rd /s /q node_modules && del package-lock.json"
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "vite": "vite",
+    "build": "vite build",
+    "build:with-yt-dlp": "vite build",
+    "preview": "vite preview",
+    "desktop:dev": "electron electron/main.js",
+    "desktop:pack": "vite build && electron-builder --dir",
+    "desktop:build": "vite build && electron-builder",
+    "tunnel:quick": "cloudflared tunnel --url http://localhost:3000",
+    "tunnel:run": "cloudflared tunnel --config .cloudflared/config.yml run",
+    "lint": "tsc --noEmit",
+    "clean": "rd /s /q node_modules && del package-lock.json"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -31,6 +34,8 @@
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "^10.4.27",
     "axios": "^1.13.6",
+    "electron": "^37.3.0",
+    "electron-builder": "^26.0.12",
     "better-sqlite3": "^12.4.1",
     "form-data": "^4.0.1",
     "lucide-react": "^0.577.0",
@@ -63,8 +68,8 @@
     "path-to-regexp": "^6.2.2",
     "undici": "^6.28.0"
   },
-  "description": "",
-  "main": "check-info.js",
+  "description": "Desktop-ready video downloader with offline search, preview, and local downloads.",
+  "main": "electron/main.js",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AlphaJet185/FK-Downloader.git"
@@ -78,5 +83,40 @@
   "engines": {
     "node": "24.x"
   },
-  "homepage": "https://github.com/AlphaJet185/FK-Downloader#readme"
+  "homepage": "https://github.com/AlphaJet185/FK-Downloader#readme",
+  "build": {
+    "appId": "com.alphajet.fkdownloader",
+    "productName": "FK Downloader",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "server.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ],
+      "icon": "static/favicon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
 }

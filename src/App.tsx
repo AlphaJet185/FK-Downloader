@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
 import {
+  DOWNLOAD_CANCELLED_MESSAGE,
   downloadVideo,
   fetchDownloadUrl,
   fetchVideoDownload,
@@ -746,6 +747,11 @@ export default function App() {
       return;
     }
 
+    if (window.electronAPI?.isDesktop) {
+      void window.electronAPI.openExternal(url);
+      return;
+    }
+
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -784,6 +790,11 @@ export default function App() {
       setStatus('Download ready');
       window.setTimeout(() => setStatus('Idle'), 1500);
     } catch (err: any) {
+      if (err?.message === DOWNLOAD_CANCELLED_MESSAGE) {
+        setStatus('Idle');
+        return;
+      }
+
       setError(err?.message || 'Download failed.');
       setStatus('Idle');
     } finally {
