@@ -6,6 +6,8 @@ export interface DownloadProgress {
   receivedBytes: number;
   totalBytes: number | null;
   fileName?: string;
+  speedBytesPerSecond?: number | null;
+  estimatedRemainingMs?: number | null;
 }
 
 type DownloadProgressCallback = (progress: DownloadProgress) => void;
@@ -57,6 +59,7 @@ async function readResponseBlob(
   const fileName = inferFileName(downloadUrl, response);
   const totalHeader = response.headers.get('content-length');
   const totalBytes = totalHeader ? Number(totalHeader) || null : null;
+  const startedAt = performance.now();
 
   if (!response.body) {
     const blob = await response.blob();
@@ -64,7 +67,9 @@ async function readResponseBlob(
       phase: 'saving',
       receivedBytes: blob.size,
       totalBytes: blob.size || totalBytes,
-      fileName
+      fileName,
+      speedBytesPerSecond: null,
+      estimatedRemainingMs: null
     });
     return { blob, fileName };
   }
@@ -82,11 +87,20 @@ async function readResponseBlob(
     if (value) {
       chunks.push(value);
       receivedBytes += value.byteLength;
+      const elapsedMs = Math.max(1, performance.now() - startedAt);
+      const speedBytesPerSecond = receivedBytes / (elapsedMs / 1000);
+      const estimatedRemainingMs =
+        totalBytes && receivedBytes < totalBytes && elapsedMs >= 1000 && speedBytesPerSecond > 0
+          ? ((totalBytes - receivedBytes) / speedBytesPerSecond) * 1000
+          : null;
+
       onProgress?.({
         phase: 'downloading',
         receivedBytes,
         totalBytes,
-        fileName
+        fileName,
+        speedBytesPerSecond,
+        estimatedRemainingMs
       });
     }
   }
@@ -95,7 +109,9 @@ async function readResponseBlob(
     phase: 'saving',
     receivedBytes,
     totalBytes: totalBytes || receivedBytes,
-    fileName
+    fileName,
+    speedBytesPerSecond: null,
+    estimatedRemainingMs: null
   });
 
   return {
@@ -120,13 +136,27 @@ function saveBlob(blob: Blob, fileName: string) {
 }
 
 async function startDownload(downloadUrl: string, onProgress?: DownloadProgressCallback) {
+  const { blob, fileName } = await fetchDownloadBundle(downloadUrl, onProgress);
+  saveBlob(blob, fileName);
+}
+
+async function fetchDownloadBundle(downloadUrl: string, onProgress?: DownloadProgressCallback) {
   onProgress?.({
     phase: 'starting',
     receivedBytes: 0,
-    totalBytes: null
+    totalBytes: null,
+    speedBytesPerSecond: null,
+    estimatedRemainingMs: null
   });
 
-  const response = await fetch(downloadUrl);
+  let response: Response;
+
+  try {
+    response = await fetch(downloadUrl);
+  } catch {
+    throw new Error('Download requires an internet connection.');
+  }
+
   const contentType = response.headers.get('content-type') || '';
 
   if (!response.ok || contentType.includes('application/json')) {
@@ -139,8 +169,7 @@ async function startDownload(downloadUrl: string, onProgress?: DownloadProgressC
     throw new Error(message);
   }
 
-  const { blob, fileName } = await readResponseBlob(response, downloadUrl, onProgress);
-  saveBlob(blob, fileName);
+  return readResponseBlob(response, downloadUrl, onProgress);
 }
 
 export async function downloadVideo(url: string, type = 'video', onProgress?: DownloadProgressCallback) {
@@ -149,4 +178,12 @@ export async function downloadVideo(url: string, type = 'video', onProgress?: Do
 
 export async function openDownloadUrl(url: string, onProgress?: DownloadProgressCallback) {
   await startDownload(url, onProgress);
+}
+
+export async function fetchVideoDownload(url: string, type = 'video', onProgress?: DownloadProgressCallback) {
+  return fetchDownloadBundle(downloadEndpoint(url, type), onProgress);
+}
+
+export async function fetchDownloadUrl(url: string, onProgress?: DownloadProgressCallback) {
+  return fetchDownloadBundle(url, onProgress);
 }

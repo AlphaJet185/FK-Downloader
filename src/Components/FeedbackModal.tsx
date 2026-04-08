@@ -22,6 +22,11 @@ export function FeedbackModal({ isOpen, onClose }: FeedbackModalProps) {
       return;
     }
 
+    if (!navigator.onLine) {
+      setError('Feedback needs an internet connection.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
 

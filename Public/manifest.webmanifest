@@ -1,0 +1,17 @@
+{
+  "name": "FK Downloader",
+  "short_name": "FK",
+  "description": "Search, preview, and reopen your saved videos with offline support.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#022c22",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

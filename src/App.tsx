@@ -15,7 +15,28 @@ import {
   WifiOff
 } from 'lucide-react';
 import { FeedbackModal } from './Components/FeedbackModal';
-import { downloadVideo, openDownloadUrl, type DownloadProgress } from './download';
+import {
+  downloadVideo,
+  fetchDownloadUrl,
+  fetchVideoDownload,
+  openDownloadUrl,
+  type DownloadProgress
+} from './download';
+import {
+  getOfflineSuggestions,
+  getOfflineVideoEntry,
+  getRecentOfflineVideos,
+  saveOfflineSearchResults,
+  saveOfflineVideo,
+  searchOfflineCache
+} from './offlineCache';
+import {
+  getOfflineDownload,
+  listOfflineDownloads,
+  saveOfflineDownload,
+  type OfflineDownloadMeta,
+  type OfflineDownloadRecord
+} from './offlineMedia';
 
 interface SearchResult {
   id: string;
@@ -62,10 +83,20 @@ interface DownloadState extends DownloadProgress {
   label: string;
 }
 
+type ResultSource = 'live' | 'offline-search';
+
+const OFFLINE_MODE_MESSAGE =
+  'Recent searches and opened videos stay available. Recognition, preview, downloads, and YouTube links come back when you reconnect.';
+
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function formatRemainingDuration(currentTime: number, totalTime: number) {
+  const remaining = Math.max(0, Math.floor(totalTime || 0) - Math.floor(currentTime || 0));
+  return `-${formatDuration(remaining)}`;
 }
 
 function formatBytes(bytes: number) {
@@ -83,6 +114,31 @@ function formatBytes(bytes: number) {
   }
 
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatRemainingEstimate(remainingMs: number | null | undefined) {
+  if (!remainingMs || remainingMs <= 0) {
+    return null;
+  }
+
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds} sec remaining`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes < 60) {
+    return seconds > 0 ? `${minutes} min ${seconds} sec remaining` : `${minutes} min remaining`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0
+    ? `${hours} hr ${remainingMinutes} min remaining`
+    : `${hours} hr remaining`;
 }
 
 function downloadPhaseLabel(phase: DownloadProgress['phase']) {
@@ -167,6 +223,17 @@ function looksLikeUrl(input: string) {
   }
 }
 
+function toSearchResultFromOfflineDownload(download: OfflineDownloadMeta): SearchResult {
+  return {
+    id: download.id,
+    title: download.title,
+    channel: download.channel,
+    duration: download.duration,
+    thumbnail: download.thumbnail,
+    url: download.sourceUrl
+  };
+}
+
 export default function App() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -184,6 +251,11 @@ export default function App() {
   const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
+  const [offlineLibrary, setOfflineLibrary] = useState<SearchResult[]>(() => getRecentOfflineVideos());
+  const [resultSource, setResultSource] = useState<ResultSource>('live');
+  const [offlineDownloads, setOfflineDownloads] = useState<OfflineDownloadMeta[]>([]);
+  const [selectedOfflineDownload, setSelectedOfflineDownload] = useState<OfflineDownloadRecord | null>(null);
+  const [offlinePlaybackUrl, setOfflinePlaybackUrl] = useState('');
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
@@ -207,6 +279,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isOffline && status === 'Offline') {
+      setStatus('Idle');
+    }
+  }, [isOffline, status]);
+
+  useEffect(() => {
+    let active = true;
+
+    void listOfflineDownloads()
+      .then((downloads) => {
+        if (active) {
+          setOfflineDownloads(downloads);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setOfflineDownloads([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
@@ -218,6 +316,14 @@ export default function App() {
     if (looksLikeUrl(trimmedQuery)) {
       suggestAbortRef.current?.abort();
       setSuggestions([]);
+      return;
+    }
+
+    if (isOffline) {
+      suggestAbortRef.current?.abort();
+      const offlineSuggestions = getOfflineSuggestions(trimmedQuery);
+      setSuggestions(offlineSuggestions);
+      setShowSuggestions(offlineSuggestions.length > 0);
       return;
     }
 
@@ -261,7 +367,7 @@ export default function App() {
       }
       suggestAbortRef.current?.abort();
     };
-  }, [query]);
+  }, [isOffline, query]);
 
   useEffect(() => {
     return () => {
@@ -270,6 +376,47 @@ export default function App() {
       previewVideoRef.current?.pause();
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!selectedVideo?.id) {
+      setSelectedOfflineDownload(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    void getOfflineDownload(selectedVideo.id)
+      .then((download) => {
+        if (active) {
+          setSelectedOfflineDownload(download);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setSelectedOfflineDownload(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedVideo?.id]);
+
+  useEffect(() => {
+    if (!selectedOfflineDownload?.blob) {
+      setOfflinePlaybackUrl('');
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(selectedOfflineDownload.blob);
+    setOfflinePlaybackUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [selectedOfflineDownload]);
 
   useEffect(() => {
     if (previewVideoRef.current) {
@@ -296,6 +443,55 @@ export default function App() {
 
     try {
       const videoId = extractYouTubeVideoId(trimmedQuery);
+
+      if (isOffline) {
+        if (videoId) {
+          const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          const cachedVideo = getOfflineVideoEntry({ id: videoId, url: directUrl });
+
+          if (!cachedVideo) {
+            throw new Error("You're offline. Open this video online once to save it for offline mode.");
+          }
+
+          const cachedResult: SearchResult = {
+            ...cachedVideo.result,
+            thumbnail: cachedVideo.result.thumbnail || fallbackThumbnail(videoId),
+            url: cachedVideo.result.url || directUrl
+          };
+
+          setResults([cachedResult]);
+          setResultSource('offline-search');
+          setSelectedVideo(cachedResult);
+
+          if (cachedVideo.details) {
+            setVideoDetails({
+              ...cachedVideo.details,
+              thumbnail: cachedVideo.details.thumbnail || cachedResult.thumbnail,
+              url: cachedVideo.details.url || cachedResult.url
+            });
+          } else {
+            setVideoDetails(null);
+            setError("This video is in your offline history, but its format list wasn't cached yet.");
+          }
+
+          setStatus('Offline');
+          return;
+        }
+
+        const cachedResults = searchOfflineCache(trimmedQuery).map((result) => ({
+          ...result,
+          thumbnail: result.thumbnail || fallbackThumbnail(result.id)
+        }));
+
+        if (!cachedResults.length) {
+          throw new Error("You're offline. Search works with your saved history until you're back online.");
+        }
+
+        setResults(cachedResults);
+        setResultSource('offline-search');
+        setStatus('Offline');
+        return;
+      }
 
       if (videoId) {
         const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
@@ -325,6 +521,8 @@ export default function App() {
         };
 
         setResults([directVideo]);
+        setResultSource('live');
+        saveOfflineSearchResults(trimmedQuery, [directVideo]);
         await loadVideoDetails(directVideo);
         setStatus('Idle');
         return;
@@ -350,6 +548,8 @@ export default function App() {
       }));
 
       setResults(normalized);
+      setResultSource('live');
+      saveOfflineSearchResults(trimmedQuery, normalized);
       setStatus('Idle');
     } catch (err: any) {
       setResults([]);
@@ -370,6 +570,34 @@ export default function App() {
     setError('');
 
     try {
+      if (isOffline) {
+        const cachedVideo = getOfflineVideoEntry(video);
+
+        if (!cachedVideo) {
+          throw new Error("You're offline. This video's details aren't cached yet.");
+        }
+
+        const cachedResult: SearchResult = {
+          ...cachedVideo.result,
+          thumbnail: cachedVideo.result.thumbnail || video.thumbnail || fallbackThumbnail(video.id),
+          url: cachedVideo.result.url || video.url
+        };
+
+        setSelectedVideo(cachedResult);
+
+        if (!cachedVideo.details) {
+          throw new Error("You're offline. This video was saved, but its format list wasn't cached yet.");
+        }
+
+        setVideoDetails({
+          ...cachedVideo.details,
+          thumbnail: cachedVideo.details.thumbnail || cachedResult.thumbnail,
+          url: cachedVideo.details.url || cachedResult.url
+        });
+        setStatus('Offline');
+        return;
+      }
+
       const res = await fetch(`/api/info?url=${encodeURIComponent(video.url)}`);
       const text = await res.text();
       const payload = parseJsonSafely(text);
@@ -382,7 +610,7 @@ export default function App() {
         throw new Error(payload?.error || 'Failed to load video details.');
       }
 
-      setVideoDetails({
+      const nextDetails: VideoDetails = {
         title: payload?.title || video.title,
         channel: payload?.channel || payload?.uploader || video.channel,
         duration: Number(payload?.duration || video.duration || 0),
@@ -391,7 +619,18 @@ export default function App() {
         previewUrl: payload?.previewUrl || '',
         audioFormats: Array.isArray(payload?.audioFormats) ? payload.audioFormats : [],
         videoFormats: Array.isArray(payload?.videoFormats) ? payload.videoFormats : []
-      });
+      };
+
+      setVideoDetails(nextDetails);
+      saveOfflineVideo(
+        {
+          ...video,
+          thumbnail: nextDetails.thumbnail || video.thumbnail || fallbackThumbnail(video.id),
+          url: nextDetails.url || video.url
+        },
+        nextDetails
+      );
+      setOfflineLibrary(getRecentOfflineVideos());
     } catch (err: any) {
       setVideoDetails(null);
       setError(err?.message || 'Failed to load video details.');
@@ -405,6 +644,11 @@ export default function App() {
   };
 
   const handleRecognize = async () => {
+    if (isOffline) {
+      setError('Recognition needs an internet connection.');
+      return;
+    }
+
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setError('Audio recognition is not supported in this browser.');
       return;
@@ -497,6 +741,11 @@ export default function App() {
   };
 
   const openVideo = (url: string) => {
+    if (isOffline) {
+      setError('Opening YouTube is unavailable offline.');
+      return;
+    }
+
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -543,6 +792,11 @@ export default function App() {
   };
 
   const handleDownload = async (url: string) => {
+    if (isOffline) {
+      setError('Downloads need an internet connection.');
+      return;
+    }
+
     const fastVideoFormat = videoDetails?.videoFormats?.find((format) => format.hasAudio);
 
     await runDownload(
@@ -562,6 +816,11 @@ export default function App() {
   };
 
   const handleFormatDownload = async (format: FormatOption) => {
+    if (isOffline) {
+      setError('Downloads need an internet connection.');
+      return;
+    }
+
     const extension = format.mimeType ? format.mimeType.split('/')[1] : 'file';
     const typeLabel = format.hasVideo ? 'Video' : 'Audio';
     await runDownload(
@@ -573,7 +832,83 @@ export default function App() {
     );
   };
 
+  const handleSaveOfflineDownload = async () => {
+    if (!selectedVideo?.id) {
+      return;
+    }
+
+    if (isOffline) {
+      setError('Saving offline copies needs an internet connection.');
+      return;
+    }
+
+    if (selectedOfflineDownload) {
+      setError('This video is already saved for offline access.');
+      return;
+    }
+
+    const sourceUrl = videoDetails?.url || selectedVideo.url;
+    const preferredFormat = videoDetails?.videoFormats?.find((format) => format.hasAudio);
+    const thumbnail = videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id);
+
+    await runDownload('offline-download', 'Saving for offline access', async (onProgress) => {
+      const bundle = preferredFormat
+        ? await fetchDownloadUrl(preferredFormat.url, onProgress)
+        : await fetchVideoDownload(sourceUrl, 'video', onProgress);
+
+      await saveOfflineDownload(
+        {
+          id: selectedVideo.id,
+          sourceUrl,
+          title: videoDetails?.title || selectedVideo.title,
+          channel: videoDetails?.channel || selectedVideo.channel,
+          duration: videoDetails?.duration || selectedVideo.duration,
+          thumbnail,
+          fileName: bundle.fileName,
+          mimeType: bundle.blob.type || 'video/mp4'
+        },
+        bundle.blob
+      );
+
+      const [downloads, savedDownload] = await Promise.all([
+        listOfflineDownloads(),
+        getOfflineDownload(selectedVideo.id)
+      ]);
+
+      setOfflineDownloads(downloads);
+      setSelectedOfflineDownload(savedDownload);
+    });
+
+    setStatus('Saved offline');
+    window.setTimeout(() => setStatus('Idle'), 1500);
+  };
+
+  const handleLinkDownload = async (input: string = query) => {
+    if (isOffline) {
+      setError('Downloads need an internet connection.');
+      return;
+    }
+
+    const videoId = extractYouTubeVideoId(input.trim());
+    if (!videoId) {
+      setError('Paste a valid YouTube video link first.');
+      return;
+    }
+
+    const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    setShowSuggestions(false);
+
+    await runDownload('link-download', 'Download from pasted link', async (onProgress) => {
+      await downloadVideo(directUrl, 'video', onProgress);
+    });
+  };
+
   const togglePreviewPlayback = async () => {
+    if (isOffline && !offlinePlaybackUrl) {
+      setError('Preview playback needs an internet connection.');
+      return;
+    }
+
     const player = previewVideoRef.current;
     if (!player) return;
 
@@ -637,6 +972,44 @@ export default function App() {
       void handleSearch(text);
     }
   };
+
+  const handleOfflineDownloadClick = (download: OfflineDownloadMeta) => {
+    const result = toSearchResultFromOfflineDownload(download);
+
+    setError('');
+    setShowSuggestions(false);
+
+    if (isOffline) {
+      setSelectedVideo(result);
+      setVideoDetails({
+        title: download.title,
+        channel: download.channel,
+        duration: download.duration,
+        thumbnail: download.thumbnail,
+        url: download.sourceUrl,
+        previewUrl: '',
+        audioFormats: [],
+        videoFormats: []
+      });
+      setStatus('Offline');
+      return;
+    }
+
+    void loadVideoDetails(result);
+  };
+
+  const showingOfflineLibrary = isOffline && !selectedVideo && results.length === 0 && offlineLibrary.length > 0;
+  const visibleResults = showingOfflineLibrary ? offlineLibrary : results;
+  const showingOfflineSearchResults =
+    isOffline && !selectedVideo && resultSource === 'offline-search' && results.length > 0;
+  const directInputVideoId = extractYouTubeVideoId(query.trim());
+  const canDownloadPastedLink = Boolean(directInputVideoId);
+  const showOfflineDownloadsShelf = !selectedVideo && offlineDownloads.length > 0 && (isOffline || visibleResults.length === 0);
+  const hasSavedOfflineCopy = Boolean(selectedOfflineDownload);
+  const previewSourceUrl = offlinePlaybackUrl || (!isOffline ? videoDetails?.previewUrl || '' : '');
+  const selectedThumbnail =
+    (selectedVideo && (videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id))) ||
+    '';
 
   return (
     <div
@@ -735,16 +1108,49 @@ export default function App() {
               {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
             </button>
 
+            {canDownloadPastedLink && (
+              <button
+                onClick={() => void handleLinkDownload()}
+                disabled={Boolean(downloadState) || isOffline}
+                className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-emerald-950/40 px-6 py-3 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {downloadState?.key === 'link-download' ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : isOffline ? (
+                  <WifiOff className="h-5 w-5" />
+                ) : (
+                  <Download className="h-5 w-5" />
+                )}
+                {isOffline
+                  ? 'Needs internet'
+                  : downloadState?.key === 'link-download'
+                    ? downloadState.phase === 'saving'
+                      ? 'Saving...'
+                      : 'Downloading...'
+                    : 'Download Link'}
+              </button>
+            )}
+
             <button
               onClick={() => void handleRecognize()}
-              disabled={isRecognizing}
-              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-6 py-3 font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:opacity-50"
+              disabled={isRecognizing || isOffline}
+              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-6 py-3 font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-              {isRecognizing ? 'Listening...' : 'Recognize'}
+              {isOffline ? 'Needs internet' : isRecognizing ? 'Listening...' : 'Recognize'}
             </button>
           </div>
         </div>
+
+        {isOffline && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-4 py-4 text-left">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+              <WifiOff className="h-4 w-4" />
+              Offline mode is active
+            </div>
+            <p className="mt-1 text-sm text-amber-100/80">{OFFLINE_MODE_MESSAGE}</p>
+          </div>
+        )}
 
         {recognition && (
           <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 p-4">
@@ -799,10 +1205,84 @@ export default function App() {
                 {downloadState.totalBytes ? ` / ${formatBytes(downloadState.totalBytes)}` : ''}
               </span>
               <span>
-                {downloadState.totalBytes
-                  ? `${Math.min(100, Math.round((downloadState.receivedBytes / downloadState.totalBytes) * 100))}%`
-                  : 'Working...'}
+                {downloadState.phase === 'downloading' && downloadState.estimatedRemainingMs
+                  ? formatRemainingEstimate(downloadState.estimatedRemainingMs)
+                  : downloadState.totalBytes
+                    ? `${Math.min(100, Math.round((downloadState.receivedBytes / downloadState.totalBytes) * 100))}%`
+                    : 'Working...'}
               </span>
+            </div>
+            {downloadState.phase === 'downloading' && downloadState.speedBytesPerSecond ? (
+              <div className="mt-1 text-xs text-emerald-600">
+                Speed: {formatBytes(downloadState.speedBytesPerSecond)}/s
+              </div>
+            ) : null}
+          </div>
+        )}
+
+        {!selectedVideo && (showingOfflineLibrary || showingOfflineSearchResults) && (
+          <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <WifiOff className="h-4 w-4" />
+              {showingOfflineLibrary ? 'Recent cached videos' : 'Offline search results'}
+            </div>
+            <p className="mt-1 text-sm text-emerald-500">
+              {showingOfflineLibrary
+                ? 'These videos were opened while you were online, so you can still browse them now.'
+                : 'These matches came from your saved history because the app is offline.'}
+            </p>
+          </div>
+        )}
+
+        {showOfflineDownloadsShelf && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <WifiOff className="h-4 w-4" />
+                Offline Downloads
+              </div>
+              <p className="mt-1 text-sm text-emerald-500">
+                These full videos are saved in the browser, so they stay available inside the site even without an
+                internet connection.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {offlineDownloads.map((download) => (
+                <button
+                  type="button"
+                  key={`offline-${download.id}`}
+                  onClick={() => handleOfflineDownloadClick(download)}
+                  className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 text-left transition-all hover:-translate-y-1 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                >
+                  <div className="relative aspect-video bg-zinc-950">
+                    <img
+                      src={download.thumbnail || fallbackThumbnail(download.id)}
+                      alt={download.title}
+                      className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100"
+                      onError={(e) => {
+                        e.currentTarget.src = fallbackThumbnail(download.id);
+                      }}
+                    />
+                    <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-emerald-400">
+                      {formatDuration(download.duration)}
+                    </div>
+                    <div className="absolute left-2 top-2 rounded-full border border-emerald-500/40 bg-emerald-950/70 px-2 py-1 text-[11px] font-semibold text-emerald-200">
+                      Saved Offline
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-4">
+                    <h3 className="mb-1 line-clamp-2 font-semibold text-emerald-100 transition-colors group-hover:text-emerald-300">
+                      {download.title}
+                    </h3>
+                    <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
+                    <div className="mt-auto text-xs font-medium text-emerald-500/70">
+                      {formatBytes(download.sizeBytes)} saved in browser
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -832,6 +1312,13 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="space-y-5">
+                      {isOffline && (
+                        <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/80">
+                          Saved format info stays visible offline, but preview playback, downloads, and YouTube open are
+                          paused until the connection comes back.
+                        </div>
+                      )}
+
                       <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
                         <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
                           Audio
@@ -852,10 +1339,12 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => void handleFormatDownload(format)}
-                                disabled={Boolean(downloadState)}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
+                                disabled={Boolean(downloadState) || isOffline}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {downloadState?.key === `audio-${format.itag}` ? (
+                                {isOffline ? (
+                                  'Offline'
+                                ) : downloadState?.key === `audio-${format.itag}` ? (
                                   <span className="flex items-center gap-2">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
@@ -892,10 +1381,12 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => void handleFormatDownload(format)}
-                                disabled={Boolean(downloadState)}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-wait disabled:opacity-60"
+                                disabled={Boolean(downloadState) || isOffline}
+                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                {downloadState?.key === `video-${format.itag}` ? (
+                                {isOffline ? (
+                                  'Offline'
+                                ) : downloadState?.key === `video-${format.itag}` ? (
                                   <span className="flex items-center gap-2">
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                     {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
@@ -915,15 +1406,19 @@ export default function App() {
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
                           onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
-                          disabled={Boolean(downloadState)}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-wait disabled:opacity-60"
+                          disabled={Boolean(downloadState) || isOffline}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {downloadState?.key === 'quick-download' ? (
+                          {isOffline ? (
+                            <WifiOff className="h-4 w-4" />
+                          ) : downloadState?.key === 'quick-download' ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Download className="h-4 w-4" />
                           )}
-                          {downloadState?.key === 'quick-download'
+                          {isOffline
+                            ? 'Offline'
+                            : downloadState?.key === 'quick-download'
                             ? downloadState.phase === 'saving'
                               ? 'Saving...'
                               : 'Downloading...'
@@ -931,25 +1426,53 @@ export default function App() {
                         </button>
 
                         <button
+                          onClick={() => void handleSaveOfflineDownload()}
+                          disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {downloadState?.key === 'offline-download' ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <WifiOff className="h-4 w-4" />
+                          )}
+                          {hasSavedOfflineCopy
+                            ? 'Saved Offline'
+                            : downloadState?.key === 'offline-download'
+                              ? downloadState.phase === 'saving'
+                                ? 'Finishing Save...'
+                                : 'Saving Offline...'
+                              : isOffline
+                                ? 'Needs internet'
+                                : 'Save Offline'}
+                        </button>
+
+                        <button
                           onClick={() => openVideo(selectedVideo.url)}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                          disabled={isOffline}
+                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Music className="h-4 w-4" />
-                          Open on YouTube
+                          {isOffline ? 'Offline only' : 'Open on YouTube'}
                         </button>
                       </div>
+
+                      {hasSavedOfflineCopy && (
+                        <div className="rounded-xl border border-emerald-800/30 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">
+                          Saved in browser for offline access: {formatBytes(selectedOfflineDownload?.sizeBytes || 0)}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
               <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
-                {videoDetails?.previewUrl ? (
+                {previewSourceUrl ? (
                   <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                     <div className="relative">
                       <video
                         ref={previewVideoRef}
-                        src={videoDetails.previewUrl}
+                        src={previewSourceUrl}
                         poster={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
                         className="aspect-video w-full bg-black object-contain"
                         playsInline
@@ -973,6 +1496,11 @@ export default function App() {
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-emerald-200">
                           <Loader2 className="h-7 w-7 animate-spin" />
                           <span className="text-sm font-medium">Loading preview...</span>
+                        </div>
+                      )}
+                      {offlinePlaybackUrl && (
+                        <div className="absolute left-3 top-3 rounded-full border border-emerald-400/40 bg-emerald-950/80 px-2 py-1 text-[11px] font-semibold text-emerald-200">
+                          Offline Copy
                         </div>
                       )}
                     </div>
@@ -1004,26 +1532,47 @@ export default function App() {
                           )}
                         </button>
                         <span className="font-mono text-xs text-emerald-400">
-                          {formatDuration(Math.floor(previewDuration || videoDetails?.duration || selectedVideo.duration || 0))}
+                          {formatRemainingDuration(
+                            previewCurrentTime,
+                            previewDuration || videoDetails?.duration || selectedVideo.duration || 0
+                          )}
                         </span>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => openVideo(videoDetails?.url || selectedVideo.url)}
-                    className="mb-4 block w-full overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg transition-transform hover:-translate-y-1"
-                  >
-                    <img
-                      src={videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id)}
-                      alt={videoDetails?.title || selectedVideo.title}
-                      className="h-auto w-full object-contain"
-                      onError={(e) => {
-                        e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
-                      }}
-                    />
-                  </button>
+                  <>
+                    {!isOffline ? (
+                      <button
+                        type="button"
+                        onClick={() => openVideo(videoDetails?.url || selectedVideo.url)}
+                        className="mb-4 block w-full overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg transition-transform hover:-translate-y-1"
+                      >
+                        <img
+                          src={selectedThumbnail}
+                          alt={videoDetails?.title || selectedVideo.title}
+                          className="h-auto w-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
+                          }}
+                        />
+                      </button>
+                    ) : (
+                      <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                        <img
+                          src={selectedThumbnail}
+                          alt={videoDetails?.title || selectedVideo.title}
+                          className="h-auto w-full object-contain"
+                          onError={(e) => {
+                            e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
+                          }}
+                        />
+                        <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-3 text-sm text-emerald-500">
+                          Preview is unavailable offline.
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
                 <h2 className="mb-2 font-bold text-emerald-100">{videoDetails?.title || selectedVideo.title}</h2>
                 <p className="mb-1 text-sm font-medium text-emerald-500">{videoDetails?.channel || selectedVideo.channel}</p>
@@ -1035,7 +1584,7 @@ export default function App() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {results.map((result) => (
+            {visibleResults.map((result) => (
               <button
                 type="button"
                 key={result.id}
@@ -1068,10 +1617,10 @@ export default function App() {
           </div>
         )}
 
-        {results.length === 0 && !isSearching && !selectedVideo && (
+        {visibleResults.length === 0 && !isSearching && !selectedVideo && (
           <div className="py-20 text-center text-emerald-800/50">
             <Search className="mx-auto mb-4 h-16 w-16 opacity-20" />
-            <p>Search for a video to get started.</p>
+            <p>{isOffline ? 'Reconnect or search something from your saved history.' : 'Search for a video to get started.'}</p>
           </div>
         )}
 
