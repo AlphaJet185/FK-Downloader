@@ -13,6 +13,9 @@ export interface DownloadProgress {
 }
 
 type DownloadProgressCallback = (progress: DownloadProgress) => void;
+interface DownloadOptions {
+  signal?: AbortSignal;
+}
 
 function downloadEndpoint(url: string, type: string) {
   const base = DOWNLOAD_API_BASE_URL || '';
@@ -56,7 +59,8 @@ function inferFileName(downloadUrl: string, response: Response) {
 async function readResponseBlob(
   response: Response,
   downloadUrl: string,
-  onProgress?: DownloadProgressCallback
+  onProgress?: DownloadProgressCallback,
+  signal?: AbortSignal
 ) {
   const fileName = inferFileName(downloadUrl, response);
   const totalHeader = response.headers.get('content-length');
@@ -81,6 +85,11 @@ async function readResponseBlob(
   let receivedBytes = 0;
 
   while (true) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => undefined);
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
+
     const { done, value } = await reader.read();
     if (done) {
       break;
@@ -145,12 +154,20 @@ async function saveBlob(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-async function startDownload(downloadUrl: string, onProgress?: DownloadProgressCallback) {
-  const { blob, fileName } = await fetchDownloadBundle(downloadUrl, onProgress);
+async function startDownload(
+  downloadUrl: string,
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
+  const { blob, fileName } = await fetchDownloadBundle(downloadUrl, onProgress, options);
   await saveBlob(blob, fileName);
 }
 
-async function fetchDownloadBundle(downloadUrl: string, onProgress?: DownloadProgressCallback) {
+async function fetchDownloadBundle(
+  downloadUrl: string,
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
   onProgress?.({
     phase: 'starting',
     receivedBytes: 0,
@@ -162,8 +179,11 @@ async function fetchDownloadBundle(downloadUrl: string, onProgress?: DownloadPro
   let response: Response;
 
   try {
-    response = await fetch(downloadUrl);
+    response = await fetch(downloadUrl, { signal: options?.signal });
   } catch {
+    if (options?.signal?.aborted) {
+      throw new DOMException('The operation was aborted.', 'AbortError');
+    }
     throw new Error('Download requires an internet connection.');
   }
 
@@ -179,21 +199,39 @@ async function fetchDownloadBundle(downloadUrl: string, onProgress?: DownloadPro
     throw new Error(message);
   }
 
-  return readResponseBlob(response, downloadUrl, onProgress);
+  return readResponseBlob(response, downloadUrl, onProgress, options?.signal);
 }
 
-export async function downloadVideo(url: string, type = 'video', onProgress?: DownloadProgressCallback) {
-  await startDownload(downloadEndpoint(url, type), onProgress);
+export async function downloadVideo(
+  url: string,
+  type = 'video',
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
+  await startDownload(downloadEndpoint(url, type), onProgress, options);
 }
 
-export async function openDownloadUrl(url: string, onProgress?: DownloadProgressCallback) {
-  await startDownload(url, onProgress);
+export async function openDownloadUrl(
+  url: string,
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
+  await startDownload(url, onProgress, options);
 }
 
-export async function fetchVideoDownload(url: string, type = 'video', onProgress?: DownloadProgressCallback) {
-  return fetchDownloadBundle(downloadEndpoint(url, type), onProgress);
+export async function fetchVideoDownload(
+  url: string,
+  type = 'video',
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
+  return fetchDownloadBundle(downloadEndpoint(url, type), onProgress, options);
 }
 
-export async function fetchDownloadUrl(url: string, onProgress?: DownloadProgressCallback) {
-  return fetchDownloadBundle(url, onProgress);
+export async function fetchDownloadUrl(
+  url: string,
+  onProgress?: DownloadProgressCallback,
+  options?: DownloadOptions
+) {
+  return fetchDownloadBundle(url, onProgress, options);
 }

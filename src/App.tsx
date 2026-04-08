@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Download,
+  FolderOpen,
   Loader2,
   MessageSquare,
   Mic,
@@ -10,6 +11,7 @@ import {
   Play,
   Radio,
   Search,
+  Settings,
   UploadCloud,
   Wifi,
   WifiOff
@@ -38,6 +40,15 @@ import {
   type OfflineDownloadMeta,
   type OfflineDownloadRecord
 } from './offlineMedia';
+import {
+  getDownloadSettings,
+  getSavedDownloads,
+  markSaveLocationPrompted,
+  removeSavedDownload,
+  setDownloadFolder,
+  upsertSavedDownload,
+  type SavedDownloadRecord
+} from './downloadLibrary';
 
 interface SearchResult {
   id: string;
@@ -257,16 +268,26 @@ export default function App() {
   const [offlineDownloads, setOfflineDownloads] = useState<OfflineDownloadMeta[]>([]);
   const [selectedOfflineDownload, setSelectedOfflineDownload] = useState<OfflineDownloadRecord | null>(null);
   const [offlinePlaybackUrl, setOfflinePlaybackUrl] = useState('');
+  const [downloadSettings, setDownloadSettings] = useState(() => getDownloadSettings());
+  const [savedDownloads, setSavedDownloads] = useState<SavedDownloadRecord[]>(() => getSavedDownloads());
+  const [selectedSavedDownload, setSelectedSavedDownload] = useState<SavedDownloadRecord | null>(null);
+  const [savedPlaybackUrl, setSavedPlaybackUrl] = useState('');
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
+  const downloadAbortRef = useRef<AbortController | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const savedPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
+  const [isSavedPreviewPlaying, setIsSavedPreviewPlaying] = useState(false);
+  const [isSavedPreviewLoading, setIsSavedPreviewLoading] = useState(false);
+  const [savedPreviewCurrentTime, setSavedPreviewCurrentTime] = useState(0);
+  const [savedPreviewDuration, setSavedPreviewDuration] = useState(0);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -375,6 +396,8 @@ export default function App() {
       mediaRecorderRef.current?.stop?.();
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
       previewVideoRef.current?.pause();
+      savedPreviewVideoRef.current?.pause();
+      downloadAbortRef.current?.abort();
     };
   }, []);
 
@@ -420,6 +443,27 @@ export default function App() {
   }, [selectedOfflineDownload]);
 
   useEffect(() => {
+    let active = true;
+
+    if (!selectedSavedDownload?.filePath || !window.electronAPI?.isDesktop) {
+      setSavedPlaybackUrl('');
+      return () => {
+        active = false;
+      };
+    }
+
+    void window.electronAPI.fileUrl(selectedSavedDownload.filePath).then((url) => {
+      if (active) {
+        setSavedPlaybackUrl(url);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedSavedDownload]);
+
+  useEffect(() => {
     if (previewVideoRef.current) {
       previewVideoRef.current.pause();
       previewVideoRef.current.currentTime = 0;
@@ -429,6 +473,17 @@ export default function App() {
     setPreviewCurrentTime(0);
     setPreviewDuration(0);
   }, [selectedVideo?.id, videoDetails?.previewUrl]);
+
+  useEffect(() => {
+    if (savedPreviewVideoRef.current) {
+      savedPreviewVideoRef.current.pause();
+      savedPreviewVideoRef.current.currentTime = 0;
+    }
+    setIsSavedPreviewPlaying(false);
+    setIsSavedPreviewLoading(false);
+    setSavedPreviewCurrentTime(0);
+    setSavedPreviewDuration(0);
+  }, [selectedSavedDownload?.id, savedPlaybackUrl]);
 
   const handleSearch = async (searchQuery: string = query) => {
     const trimmedQuery = searchQuery.trim();
@@ -755,13 +810,103 @@ export default function App() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const ensureDownloadFolder = async () => {
+    if (!window.electronAPI?.isDesktop) {
+      return '';
+    }
+
+    const currentSettings = getDownloadSettings();
+    if (currentSettings.folderPath) {
+      setDownloadSettings(currentSettings);
+      return currentSettings.folderPath;
+    }
+
+    const result = await window.electronAPI.pickDownloadFolder();
+    if (result.canceled || !result.folderPath) {
+      markSaveLocationPrompted();
+      throw new Error(DOWNLOAD_CANCELLED_MESSAGE);
+    }
+
+    const nextSettings = setDownloadFolder(result.folderPath);
+    setDownloadSettings(nextSettings);
+    return result.folderPath;
+  };
+
+  const persistSavedDownload = async (
+    bundle: { blob: Blob; fileName: string },
+    meta: Omit<SavedDownloadRecord, 'id' | 'filePath' | 'savedAt' | 'sizeBytes'>
+  ) => {
+    const folderPath = await ensureDownloadFolder();
+    if (!folderPath) {
+      throw new Error('Choose a save folder before downloading.');
+    }
+
+    if (!window.electronAPI?.isDesktop) {
+      throw new Error('Saving in the app is only available in the desktop app.');
+    }
+
+    const saveResult = await window.electronAPI.saveDownloadToFolder(
+      folderPath,
+      bundle.fileName,
+      await bundle.blob.arrayBuffer(),
+      meta
+    );
+
+    if (saveResult.canceled || !saveResult.filePath) {
+      throw new Error(DOWNLOAD_CANCELLED_MESSAGE);
+    }
+
+    const nextRecord: SavedDownloadRecord = {
+      id: crypto.randomUUID(),
+      sourceId: meta.sourceId,
+      sourceUrl: meta.sourceUrl,
+      title: meta.title,
+      channel: meta.channel,
+      duration: meta.duration,
+      thumbnail: meta.thumbnail,
+      fileName: saveResult.filePath.split(/[\\/]/).pop() || bundle.fileName,
+      filePath: saveResult.filePath,
+      mimeType: meta.mimeType,
+      sizeBytes: bundle.blob.size,
+      savedAt: Date.now()
+    };
+
+    const nextLibrary = upsertSavedDownload(nextRecord);
+    setSavedDownloads(nextLibrary);
+    setSelectedSavedDownload(nextRecord);
+    return nextRecord;
+  };
+
+  const handleChangeSaveLocation = async () => {
+    if (!window.electronAPI?.isDesktop) {
+      setError('Changing save location is only available in the desktop app.');
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.pickDownloadFolder(downloadSettings.folderPath || undefined);
+      if (result.canceled || !result.folderPath) {
+        return;
+      }
+
+      const nextSettings = setDownloadFolder(result.folderPath);
+      setDownloadSettings(nextSettings);
+      setStatus('Save location updated');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to change save location.');
+    }
+  };
+
   const runDownload = async (
     key: string,
     label: string,
-    task: (onProgress: (progress: DownloadProgress) => void) => Promise<void>
+    task: (onProgress: (progress: DownloadProgress) => void, signal: AbortSignal) => Promise<void>
   ) => {
     setError('');
     setStatus('Preparing download');
+    const controller = new AbortController();
+    downloadAbortRef.current = controller;
     setDownloadState({
       key,
       label,
@@ -785,12 +930,12 @@ export default function App() {
         } else {
           setStatus('Preparing download');
         }
-      });
+      }, controller.signal);
 
       setStatus('Download ready');
       window.setTimeout(() => setStatus('Idle'), 1500);
     } catch (err: any) {
-      if (err?.message === DOWNLOAD_CANCELLED_MESSAGE) {
+      if (err?.name === 'AbortError' || err?.message === DOWNLOAD_CANCELLED_MESSAGE) {
         setStatus('Idle');
         return;
       }
@@ -799,7 +944,12 @@ export default function App() {
       setStatus('Idle');
     } finally {
       setDownloadState(null);
+      downloadAbortRef.current = null;
     }
+  };
+
+  const handleCancelDownload = () => {
+    downloadAbortRef.current?.abort();
   };
 
   const handleDownload = async (url: string) => {
@@ -809,19 +959,41 @@ export default function App() {
     }
 
     const fastVideoFormat = videoDetails?.videoFormats?.find((format) => format.hasAudio);
+    const sourceUrl = videoDetails?.url || url;
+    const thumbnail = videoDetails?.thumbnail || selectedVideo?.thumbnail || fallbackThumbnail(selectedVideo?.id || '');
 
     await runDownload(
       'quick-download',
       fastVideoFormat
         ? `Quick download ${fastVideoFormat.qualityLabel}`
         : 'Quick download',
-      async (onProgress) => {
+      async (onProgress, signal) => {
         if (fastVideoFormat) {
-          await openDownloadUrl(fastVideoFormat.url, onProgress);
+          const bundle = await fetchDownloadUrl(fastVideoFormat.url, onProgress, { signal });
+          await persistSavedDownload(bundle, {
+            sourceId: selectedVideo?.id || sourceUrl,
+            sourceUrl,
+            title: videoDetails?.title || selectedVideo?.title || 'Download',
+            channel: videoDetails?.channel || selectedVideo?.channel || 'YouTube',
+            duration: videoDetails?.duration || selectedVideo?.duration || 0,
+            thumbnail,
+            fileName: bundle.fileName,
+            mimeType: bundle.blob.type || 'video/mp4'
+          });
           return;
         }
 
-        await downloadVideo(url, 'video', onProgress);
+        const bundle = await fetchVideoDownload(sourceUrl, 'video', onProgress, { signal });
+        await persistSavedDownload(bundle, {
+          sourceId: selectedVideo?.id || sourceUrl,
+          sourceUrl,
+          title: videoDetails?.title || selectedVideo?.title || 'Download',
+          channel: videoDetails?.channel || selectedVideo?.channel || 'YouTube',
+          duration: videoDetails?.duration || selectedVideo?.duration || 0,
+          thumbnail,
+          fileName: bundle.fileName,
+          mimeType: bundle.blob.type || 'video/mp4'
+        });
       }
     );
   };
@@ -834,11 +1006,23 @@ export default function App() {
 
     const extension = format.mimeType ? format.mimeType.split('/')[1] : 'file';
     const typeLabel = format.hasVideo ? 'Video' : 'Audio';
+    const sourceUrl = videoDetails?.url || selectedVideo?.url || format.url;
+    const thumbnail = videoDetails?.thumbnail || selectedVideo?.thumbnail || fallbackThumbnail(selectedVideo?.id || '');
     await runDownload(
       `${typeLabel.toLowerCase()}-${format.itag}`,
       `${typeLabel} ${format.qualityLabel} (${extension})`,
-      async (onProgress) => {
-        await openDownloadUrl(format.url, onProgress);
+      async (onProgress, signal) => {
+        const bundle = await fetchDownloadUrl(format.url, onProgress, { signal });
+        await persistSavedDownload(bundle, {
+          sourceId: selectedVideo?.id || sourceUrl,
+          sourceUrl,
+          title: videoDetails?.title || selectedVideo?.title || 'Download',
+          channel: videoDetails?.channel || selectedVideo?.channel || 'YouTube',
+          duration: videoDetails?.duration || selectedVideo?.duration || 0,
+          thumbnail,
+          fileName: bundle.fileName,
+          mimeType: bundle.blob.type || format.mimeType || 'application/octet-stream'
+        });
       }
     );
   };
@@ -909,8 +1093,18 @@ export default function App() {
     const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
     setShowSuggestions(false);
 
-    await runDownload('link-download', 'Download from pasted link', async (onProgress) => {
-      await downloadVideo(directUrl, 'video', onProgress);
+    await runDownload('link-download', 'Download from pasted link', async (onProgress, signal) => {
+      const bundle = await fetchVideoDownload(directUrl, 'video', onProgress, { signal });
+      await persistSavedDownload(bundle, {
+        sourceId: videoId,
+        sourceUrl: directUrl,
+        title: videoDetails?.title || directUrl,
+        channel: videoDetails?.channel || 'YouTube',
+        duration: videoDetails?.duration || 0,
+        thumbnail: videoDetails?.thumbnail || fallbackThumbnail(videoId),
+        fileName: bundle.fileName,
+        mimeType: bundle.blob.type || 'video/mp4'
+      });
     });
   };
 
@@ -964,6 +1158,51 @@ export default function App() {
     setIsPreviewLoading(false);
   };
 
+  const handleSavedPreviewTimeUpdate = () => {
+    const player = savedPreviewVideoRef.current;
+    if (!player) return;
+
+    setSavedPreviewCurrentTime(player.currentTime || 0);
+    setSavedPreviewDuration(player.duration || selectedSavedDownload?.duration || 0);
+  };
+
+  const handleSavedPreviewMetadata = () => {
+    const player = savedPreviewVideoRef.current;
+    if (!player) return;
+
+    setSavedPreviewDuration(player.duration || selectedSavedDownload?.duration || 0);
+  };
+
+  const handleSavedPreviewPlaying = () => {
+    setIsSavedPreviewPlaying(true);
+    setIsSavedPreviewLoading(false);
+  };
+
+  const handleSavedPreviewPause = () => {
+    setIsSavedPreviewPlaying(false);
+    setIsSavedPreviewLoading(false);
+  };
+
+  const toggleSavedPreviewPlayback = async () => {
+    const player = savedPreviewVideoRef.current;
+    if (!player) return;
+
+    if (player.paused) {
+      setIsSavedPreviewLoading(true);
+      try {
+        await player.play();
+      } catch {
+        setIsSavedPreviewPlaying(false);
+        setIsSavedPreviewLoading(false);
+      }
+      return;
+    }
+
+    player.pause();
+    setIsSavedPreviewPlaying(false);
+    setIsSavedPreviewLoading(false);
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -1007,6 +1246,47 @@ export default function App() {
     }
 
     void loadVideoDetails(result);
+  };
+
+  const handleSavedDownloadClick = (download: SavedDownloadRecord) => {
+    setSelectedSavedDownload(download);
+    setSavedPreviewCurrentTime(0);
+    setSavedPreviewDuration(0);
+    setIsSavedPreviewPlaying(false);
+    setIsSavedPreviewLoading(false);
+    setStatus('Saved library');
+  };
+
+  const handleDeleteSavedDownload = async () => {
+    if (!selectedSavedDownload) {
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Delete "${selectedSavedDownload.title}" from the app and your device?`
+    );
+
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      if (window.electronAPI?.isDesktop) {
+        const result = await window.electronAPI.deleteFile(selectedSavedDownload.filePath);
+        if (result.canceled) {
+          throw new Error(result.reason || 'Failed to delete file.');
+        }
+      }
+
+      const nextLibrary = removeSavedDownload(selectedSavedDownload.id);
+      setSavedDownloads(nextLibrary);
+      setSelectedSavedDownload(null);
+      setSavedPlaybackUrl('');
+      setStatus('File deleted');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to delete file.');
+    }
   };
 
   const showingOfflineLibrary = isOffline && !selectedVideo && results.length === 0 && offlineLibrary.length > 0;
@@ -1064,6 +1344,28 @@ export default function App() {
             <div className="flex items-center gap-2 rounded-full border border-emerald-800/50 bg-zinc-900/50 px-3 py-1 text-emerald-300">
               <Radio className="h-4 w-4" />
               Status: {status}
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-emerald-800/30 bg-zinc-900/50 p-4 text-left shadow-lg shadow-black/10">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <FolderOpen className="h-4 w-4" />
+                  Save location
+                </div>
+                <p className="mt-1 max-w-2xl break-all text-sm text-emerald-500">
+                  {downloadSettings.folderPath || 'You will be asked where to save the first time you download.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleChangeSaveLocation()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-zinc-950 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40"
+              >
+                <Settings className="h-4 w-4" />
+                Change location
+              </button>
             </div>
           </div>
         </div>
@@ -1186,11 +1488,22 @@ export default function App() {
 
         {downloadState && (
           <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              {downloadPhaseLabel(downloadState.phase)}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  {downloadPhaseLabel(downloadState.phase)}
+                </div>
+                <div className="mt-1 text-sm text-emerald-400">{downloadState.label}</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelDownload}
+                className="inline-flex items-center justify-center rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs font-semibold text-red-200 transition-colors hover:bg-red-900/40"
+              >
+                Cancel
+              </button>
             </div>
-            <div className="mt-1 text-sm text-emerald-400">{downloadState.label}</div>
 
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-zinc-900/70">
               <div
@@ -1294,6 +1607,194 @@ export default function App() {
                   </div>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {savedDownloads.length > 0 && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <FolderOpen className="h-4 w-4" />
+                Saved in app
+              </div>
+              <p className="mt-1 text-sm text-emerald-500">
+                These files are stored in your chosen folder and stay available even when the app is offline.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {savedDownloads.map((download) => (
+                <button
+                  type="button"
+                  key={`saved-${download.id}`}
+                  onClick={() => handleSavedDownloadClick(download)}
+                  className="group flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 text-left transition-all hover:-translate-y-1 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                >
+                  <div className="relative aspect-video bg-zinc-950">
+                    <img
+                      src={download.thumbnail || fallbackThumbnail(download.sourceId || download.id)}
+                      alt={download.title}
+                      className="h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100"
+                      onError={(e) => {
+                        e.currentTarget.src = fallbackThumbnail(download.sourceId || download.id);
+                      }}
+                    />
+                    <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-emerald-400">
+                      {formatDuration(download.duration)}
+                    </div>
+                    <div className="absolute left-2 top-2 rounded-full border border-emerald-500/40 bg-emerald-950/70 px-2 py-1 text-[11px] font-semibold text-emerald-200">
+                      In App
+                    </div>
+                  </div>
+
+                  <div className="flex flex-1 flex-col p-4">
+                    <h3 className="mb-1 line-clamp-2 font-semibold text-emerald-100 transition-colors group-hover:text-emerald-300">
+                      {download.title}
+                    </h3>
+                    <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
+                    <div className="mt-auto text-xs font-medium text-emerald-500/70">
+                      {formatBytes(download.sizeBytes)} saved to {download.fileName}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {selectedSavedDownload && (
+          <div className="flex flex-col overflow-hidden rounded-2xl border border-emerald-800/30 bg-zinc-900/50 md:flex-row">
+            <div className="flex-1 border-b border-emerald-800/30 p-6 md:border-b-0 md:border-r">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-emerald-300">
+                <FolderOpen className="h-4 w-4" />
+                Saved File
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40 p-4">
+                  <h3 className="text-lg font-semibold text-emerald-100">{selectedSavedDownload.title}</h3>
+                  <p className="mt-1 text-sm text-emerald-500">{selectedSavedDownload.channel}</p>
+                  <p className="mt-2 text-xs text-emerald-700 break-all">{selectedSavedDownload.filePath}</p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => void window.electronAPI?.revealPath(selectedSavedDownload.filePath)}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Show in folder
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleChangeSaveLocation()}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Change location
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSavedDownload()}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-red-700/50 bg-red-950/30 px-4 py-3 text-sm font-semibold text-red-200 transition-colors hover:bg-red-900/40"
+                  >
+                    Delete file
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
+              {savedPlaybackUrl ? (
+                <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                  <div className="relative">
+                    <video
+                      ref={savedPreviewVideoRef}
+                      src={savedPlaybackUrl}
+                      poster={selectedSavedDownload.thumbnail || fallbackThumbnail(selectedSavedDownload.sourceId || selectedSavedDownload.id)}
+                      className="aspect-video w-full bg-black object-contain"
+                      playsInline
+                      preload="metadata"
+                      onLoadedMetadata={handleSavedPreviewMetadata}
+                      onTimeUpdate={handleSavedPreviewTimeUpdate}
+                      onPlay={() => setIsSavedPreviewLoading(true)}
+                      onWaiting={() => setIsSavedPreviewLoading(true)}
+                      onPlaying={handleSavedPreviewPlaying}
+                      onPause={handleSavedPreviewPause}
+                      onEnded={() => {
+                        setIsSavedPreviewPlaying(false);
+                        setIsSavedPreviewLoading(false);
+                      }}
+                      onError={() => {
+                        setIsSavedPreviewPlaying(false);
+                        setIsSavedPreviewLoading(false);
+                      }}
+                    />
+                    {isSavedPreviewLoading && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/55 text-emerald-200">
+                        <Loader2 className="h-7 w-7 animate-spin" />
+                        <span className="text-sm font-medium">Loading file...</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
+                    <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-[width]"
+                        style={{
+                          width: `${savedPreviewDuration > 0 ? (savedPreviewCurrentTime / savedPreviewDuration) * 100 : 0}%`
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-mono text-xs text-emerald-400">
+                        {formatDuration(Math.floor(savedPreviewCurrentTime || 0))}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void toggleSavedPreviewPlayback()}
+                        disabled={isSavedPreviewLoading}
+                        className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
+                      >
+                        {isSavedPreviewLoading ? (
+                          <Loader2 className="h-5 w-5 animate-spin" />
+                        ) : isSavedPreviewPlaying ? (
+                          <Pause className="h-5 w-5" />
+                        ) : (
+                          <Play className="ml-0.5 h-5 w-5" />
+                        )}
+                      </button>
+                      <span className="font-mono text-xs text-emerald-400">
+                        {formatRemainingDuration(
+                          savedPreviewCurrentTime,
+                          savedPreviewDuration || selectedSavedDownload.duration || 0
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                  <img
+                    src={selectedSavedDownload.thumbnail || fallbackThumbnail(selectedSavedDownload.sourceId || selectedSavedDownload.id)}
+                    alt={selectedSavedDownload.title}
+                    className="h-auto w-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = fallbackThumbnail(selectedSavedDownload.sourceId || selectedSavedDownload.id);
+                    }}
+                  />
+                </div>
+              )}
+
+              <h2 className="mb-2 font-bold text-emerald-100">{selectedSavedDownload.title}</h2>
+              <p className="mb-1 text-sm font-medium text-emerald-500">{selectedSavedDownload.channel}</p>
+              <p className="font-mono text-xs text-emerald-700">
+                Size: {formatBytes(selectedSavedDownload.sizeBytes)}
+              </p>
             </div>
           </div>
         )}

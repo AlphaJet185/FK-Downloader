@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +10,7 @@ const appRoot = path.resolve(electronDir, '..');
 let mainWindow = null;
 let backendControl = null;
 let isCleaningUp = false;
+let updateCheckTimer = null;
 
 function resolveServerAppRoot() {
   return app.isPackaged ? app.getAppPath() : appRoot;
@@ -30,6 +32,36 @@ function resolveYtDlpPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'bin', 'yt-dlp')
     : path.join(appRoot, 'bin', 'yt-dlp');
+}
+
+function sanitizeFileName(input) {
+  return String(input || 'download')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim() || 'download';
+}
+
+function safeFileUrl(filePath) {
+  const normalized = path.resolve(filePath).replace(/\\/g, '/');
+  return `file:///${normalized.startsWith('/') ? normalized.slice(1) : normalized}`;
+}
+
+async function ensureUniqueFilePath(folderPath, fileName) {
+  const baseName = sanitizeFileName(fileName);
+  const ext = path.extname(baseName);
+  const stem = path.basename(baseName, ext);
+  let candidate = path.join(folderPath, baseName);
+  let counter = 1;
+
+  while (true) {
+    try {
+      await fs.access(candidate);
+      candidate = path.join(folderPath, `${stem} (${counter})${ext}`);
+      counter += 1;
+    } catch {
+      return candidate;
+    }
+  }
 }
 
 async function ensureBackend() {
@@ -74,10 +106,100 @@ function registerIpcHandlers() {
     };
   });
 
+  ipcMain.handle('electron:pick-download-folder', async (_event, payload) => {
+    const defaultPath =
+      typeof payload?.defaultPath === 'string' && payload.defaultPath.trim()
+        ? payload.defaultPath.trim()
+        : app.getPath('downloads');
+
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Choose download folder',
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory']
+    });
+
+    return {
+      canceled,
+      folderPath: canceled ? '' : filePaths[0] || ''
+    };
+  });
+
+  ipcMain.handle('electron:save-download-to-folder', async (_event, payload) => {
+    const folderPath =
+      typeof payload?.folderPath === 'string' ? path.resolve(payload.folderPath) : '';
+    const rawFileName =
+      typeof payload?.fileName === 'string' && payload.fileName.trim()
+        ? payload.fileName.trim()
+        : 'download';
+
+    if (!folderPath) {
+      return { canceled: true, reason: 'No folder selected.' };
+    }
+
+    await fs.mkdir(folderPath, { recursive: true });
+    const filePath = await ensureUniqueFilePath(folderPath, rawFileName);
+    await fs.writeFile(filePath, Buffer.from(payload.data));
+
+    const meta = {
+      fileName: path.basename(filePath),
+      savedAt: Date.now(),
+      ...payload?.meta
+    };
+
+    await fs.writeFile(`${filePath}.json`, JSON.stringify(meta, null, 2), 'utf8');
+
+    return {
+      canceled: false,
+      filePath,
+      metaPath: `${filePath}.json`
+    };
+  });
+
   ipcMain.handle('electron:open-external', async (_event, url) => {
     if (typeof url === 'string' && url.trim()) {
       await shell.openExternal(url);
     }
+  });
+
+  ipcMain.handle('electron:file-url', async (_event, filePath) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return '';
+    }
+
+    return safeFileUrl(filePath.trim());
+  });
+
+  ipcMain.handle('electron:reveal-path', async (_event, filePath) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return;
+    }
+
+    await shell.showItemInFolder(path.resolve(filePath));
+  });
+
+  ipcMain.handle('electron:delete-file', async (_event, filePath) => {
+    if (typeof filePath !== 'string' || !filePath.trim()) {
+      return { canceled: true, reason: 'No file path provided.' };
+    }
+
+    const resolvedPath = path.resolve(filePath);
+    const sidecarPath = `${resolvedPath}.json`;
+
+    try {
+      await fs.rm(resolvedPath, { force: true });
+    } catch (error) {
+      return {
+        canceled: true,
+        reason: error instanceof Error ? error.message : String(error)
+      };
+    }
+
+    await fs.rm(sidecarPath, { force: true }).catch(() => undefined);
+
+    return {
+      canceled: false,
+      filePath: resolvedPath
+    };
   });
 }
 
@@ -141,6 +263,49 @@ async function shutdownBackend() {
   await currentBackend.close();
 }
 
+function registerAutoUpdateHandlers() {
+  if (!app.isPackaged) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+
+  autoUpdater.on('update-available', () => {
+    if (mainWindow) {
+      void dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        buttons: ['OK'],
+        title: 'FK Downloader',
+        message: 'A new version is being downloaded in the background.'
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', async () => {
+    const options = {
+      type: 'info',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'FK Downloader',
+      message: 'Update ready to install',
+      detail: 'Restart the app to finish installing the latest version from GitHub.'
+    };
+
+    const response = mainWindow
+      ? await dialog.showMessageBox(mainWindow, options)
+      : await dialog.showMessageBox(options);
+
+    if (response.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    console.error('auto-updater error', error);
+  });
+}
+
 app.on('before-quit', (event) => {
   if (isCleaningUp) {
     return;
@@ -156,9 +321,17 @@ app.on('before-quit', (event) => {
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.alphajet.fkdownloader');
   registerIpcHandlers();
+  registerAutoUpdateHandlers();
 
   try {
     await createMainWindow();
+    if (app.isPackaged) {
+      updateCheckTimer = setTimeout(() => {
+        autoUpdater.checkForUpdates().catch((error) => {
+          console.error('auto-updater check failed', error);
+        });
+      }, 5000);
+    }
   } catch (error) {
     dialog.showErrorBox(
       'FK Downloader',
