@@ -96,6 +96,7 @@ interface DownloadState extends DownloadProgress {
 }
 
 type ResultSource = 'live' | 'offline-search';
+type AppView = 'home' | 'settings';
 
 const OFFLINE_MODE_MESSAGE =
   'Recent searches and opened videos stay available. Recognition, preview, downloads, and YouTube links come back when you reconnect.';
@@ -263,6 +264,7 @@ export default function App() {
   const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeView, setActiveView] = useState<AppView>('home');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [isDragging, setIsDragging] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
@@ -286,6 +288,8 @@ export default function App() {
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
   const downloadAbortRef = useRef<AbortController | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const savedFilesSectionRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1309,9 +1313,19 @@ export default function App() {
   const hasSavedOfflineCopy = Boolean(selectedOfflineDownload);
   const previewSourceUrl = offlinePlaybackUrl || (!isOffline ? videoDetails?.previewUrl || '' : '');
   const shouldMarkVisibleResultsAsOfflineCopy = showingOfflineLibrary || showingOfflineSearchResults;
+  const isDesktopApp = Boolean(window.electronAPI?.isDesktop);
   const selectedThumbnail =
     (selectedVideo && (videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id))) ||
     '';
+
+  const openSavedFilesView = () => {
+    setActiveView('home');
+    setSelectedVideo(null);
+    setShowSuggestions(false);
+    window.setTimeout(() => {
+      savedFilesSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+  };
 
   return (
     <div
@@ -1331,60 +1345,150 @@ export default function App() {
         </div>
       )}
 
-      <div className="relative z-10 mx-auto max-w-4xl space-y-8">
-        <div className="space-y-2 text-center">
-          <h1 className="flex items-center justify-center gap-3 pt-2 text-3xl font-bold text-emerald-400 sm:pt-0 sm:text-4xl">
-            <Download className="h-8 w-8 sm:h-10 sm:w-10" />
-            FK Downloader
-          </h1>
-          <p className="text-sm text-emerald-200/60 sm:text-base">
-            Search, preview, and open videos without extractor failures.
-          </p>
-
-          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium sm:gap-4 sm:text-sm">
-            <div
-              className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
-                isOffline
-                  ? 'border-red-500/50 bg-red-900/30 text-red-400'
-                  : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-400'
-              }`}
+      <div className="relative z-10 mx-auto max-w-6xl space-y-8">
+        <div className="relative">
+          <div className="absolute right-0 top-0 z-20">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSuggestions(false);
+                setActiveView('settings');
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/30"
             >
-              {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
-              {isOffline ? 'Offline Mode' : 'Online Mode'}
-            </div>
-            <div className="flex items-center gap-2 rounded-full border border-emerald-800/50 bg-zinc-900/50 px-3 py-1 text-emerald-300">
-              <Radio className="h-4 w-4" />
-              Status: {status}
-            </div>
+              <Settings className="h-4 w-4" />
+              Settings
+            </button>
           </div>
 
-          <div className="mt-5 rounded-2xl border border-emerald-800/30 bg-zinc-900/50 p-4 text-left shadow-lg shadow-black/10">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <FolderOpen className="h-4 w-4" />
-                  Save location
-                </div>
-                <p className="mt-1 max-w-2xl break-all text-sm text-emerald-500">
-                  {downloadSettings.folderPath || 'You will be asked where to save the first time you download.'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleChangeSaveLocation()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-zinc-950 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40"
+          <div className="space-y-2 pt-16 text-center md:mx-auto md:max-w-3xl md:pt-2 md:pr-36">
+            <h1 className="flex items-center justify-center gap-3 pt-2 text-3xl font-bold text-emerald-400 sm:pt-0 sm:text-4xl">
+              <Download className="h-8 w-8 sm:h-10 sm:w-10" />
+              FK Downloader
+            </h1>
+            <p className="text-sm text-emerald-200/60 sm:text-base">
+              Search, preview, and open videos without extractor failures.
+            </p>
+
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium sm:gap-4 sm:text-sm">
+              <div
+                className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
+                  isOffline
+                    ? 'border-red-500/50 bg-red-900/30 text-red-400'
+                    : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-400'
+                }`}
               >
-                <Settings className="h-4 w-4" />
-                Change location
-              </button>
+                {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
+                {isOffline ? 'Offline Mode' : 'Online Mode'}
+              </div>
+              <div className="flex items-center gap-2 rounded-full border border-emerald-800/50 bg-zinc-900/50 px-3 py-1 text-emerald-300">
+                <Radio className="h-4 w-4" />
+                Status: {status}
+              </div>
             </div>
           </div>
         </div>
 
+        {activeView === 'settings' ? (
+          <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-6">
+            <div className="flex flex-col gap-4 border-b border-emerald-800/30 pb-5 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('home')}
+                  className="mb-4 inline-flex items-center gap-2 rounded-xl border border-emerald-800/40 bg-zinc-950/70 px-3 py-2 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/25"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to search
+                </button>
+                <h2 className="text-2xl font-bold text-emerald-100">Settings</h2>
+                <p className="mt-1 text-sm text-emerald-500">
+                  Manage download behavior, saved content, and quick app actions in one place.
+                </p>
+              </div>
+              <div className="rounded-full border border-emerald-800/50 bg-zinc-950/70 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+                {isDesktopApp ? 'Desktop app' : 'Browser mode'}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
+                <div className="mt-2 text-lg font-semibold text-emerald-100">
+                  {downloadSettings.folderPath ? 'Configured' : 'Ask first'}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Saved files</div>
+                <div className="mt-2 text-lg font-semibold text-emerald-100">{savedDownloads.length}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
+                <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
+                <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <FolderOpen className="h-4 w-4" />
+                  Save location
+                </div>
+                <p className="mt-3 break-all text-sm leading-6 text-emerald-500">
+                  {downloadSettings.folderPath || 'You will be asked where to save the first time you download.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void handleChangeSaveLocation()}
+                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40"
+                >
+                  <FolderOpen className="h-4 w-4" />
+                  Change location
+                </button>
+              </div>
+
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+                <div className="text-sm font-semibold text-emerald-200">App actions</div>
+                <div className="mt-4 flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setActiveView('home')}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/25"
+                  >
+                    <Search className="h-4 w-4" />
+                    Open search
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openSavedFilesView}
+                    disabled={savedDownloads.length === 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Open saved files
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsFeedbackOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    Send feedback
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
         <div className="relative z-10">
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
               <input
+                ref={searchInputRef}
                 type="text"
                 value={query}
                 onChange={(e) => {
@@ -1398,6 +1502,10 @@ export default function App() {
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
+                    e.preventDefault();
+                    setShowSuggestions(false);
+                    suggestAbortRef.current?.abort();
+                    searchInputRef.current?.blur();
                     void handleSearch();
                   }
                 }}
@@ -1465,6 +1573,7 @@ export default function App() {
             </button>
           </div>
         </div>
+        )}
 
         {isOffline && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-4 py-4 text-left">
@@ -1621,7 +1730,7 @@ export default function App() {
         )}
 
         {savedDownloads.length > 0 && (
-          <div className="space-y-4">
+          <div ref={savedFilesSectionRef} className="space-y-4">
             <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                 <FolderOpen className="h-4 w-4" />
