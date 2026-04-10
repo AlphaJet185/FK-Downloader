@@ -104,6 +104,8 @@ interface DownloadState extends DownloadProgress {
 
 type ResultSource = 'live' | 'offline-search';
 type AppView = 'home' | 'settings';
+type LibraryFilter = 'all' | 'saved' | 'offline';
+type LibrarySort = 'newest' | 'size' | 'title';
 
 const OFFLINE_MODE_MESSAGE =
   'Recent searches and opened videos stay available. Recognition, preview, downloads, and YouTube links come back when you reconnect.';
@@ -345,6 +347,8 @@ export default function App() {
   const [selectedSavedDownload, setSelectedSavedDownload] = useState<SavedDownloadRecord | null>(null);
   const [savedPlaybackUrl, setSavedPlaybackUrl] = useState('');
   const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
+  const [librarySort, setLibrarySort] = useState<LibrarySort>('newest');
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
@@ -1416,6 +1420,27 @@ export default function App() {
       value.toLowerCase().includes(normalizedLibraryQuery)
     );
   });
+  const sortByMode = <T extends OfflineDownloadMeta | SavedDownloadRecord>(items: T[]): T[] => {
+    const next = [...items];
+
+    next.sort((left, right) => {
+      if (librarySort === 'size') {
+        return right.sizeBytes - left.sizeBytes;
+      }
+
+      if (librarySort === 'title') {
+        return left.title.localeCompare(right.title);
+      }
+
+      return right.savedAt - left.savedAt;
+    });
+
+    return next;
+  };
+  const visibleOfflineDownloads: OfflineDownloadMeta[] = sortByMode(filteredOfflineDownloads);
+  const visibleSavedDownloads: SavedDownloadRecord[] = sortByMode(filteredSavedDownloads);
+  const shouldShowOfflineSection = showOfflineDownloadsShelf && (libraryFilter === 'all' || libraryFilter === 'offline');
+  const shouldShowSavedSection = savedDownloads.length > 0 && (libraryFilter === 'all' || libraryFilter === 'saved');
   const totalOfflineSize = offlineDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
   const totalSavedSize = savedDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
   const recommendedAudioFormat = [...(videoDetails?.audioFormats || [])].sort((left, right) => {
@@ -1487,71 +1512,40 @@ export default function App() {
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-[2rem] border border-emerald-800/40 bg-[radial-gradient(circle_at_top_left,_rgba(52,211,153,0.2),_transparent_32%),linear-gradient(135deg,rgba(2,6,23,0.92),rgba(6,78,59,0.42))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.38)] backdrop-blur md:p-8">
-            <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
-              <div className="space-y-4 pt-12 text-center md:pt-2 md:pr-24 md:text-left">
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  Media workspace
-                </div>
-                <h1 className="flex items-center justify-center gap-3 text-3xl font-bold text-white md:justify-start sm:text-5xl">
-                  <Download className="h-8 w-8 text-emerald-300 sm:h-10 sm:w-10" />
+          <div className="rounded-[1.5rem] border border-emerald-800/40 bg-zinc-900/55 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-w-0">
+                <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
+                  <Download className="h-6 w-6 text-emerald-300" />
                   FK Downloader
                 </h1>
-                <p className="max-w-2xl text-sm leading-7 text-emerald-100/70 sm:text-base">
-                  Search YouTube faster, preview before you save, and keep a cleaner local library with offline copies
-                  and desktop downloads in one place.
+                <p className="mt-1 text-sm text-emerald-100/65">
+                  Search, preview, download, and keep offline copies in one compact workspace.
                 </p>
-
-                <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium md:justify-start sm:text-sm">
-                  <div
-                    className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
-                      isOffline
-                        ? 'border-red-500/50 bg-red-900/30 text-red-300'
-                        : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-300'
-                    }`}
-                  >
-                    {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
-                    {isOffline ? 'Offline mode' : 'Online mode'}
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-emerald-100/80">
-                    <Radio className="h-4 w-4 text-emerald-300" />
-                    Status: {status}
-                  </div>
-                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-emerald-100/80">
-                    <LayoutGrid className="h-4 w-4 text-emerald-300" />
-                    {savedDownloads.length + offlineDownloads.length} items ready
-                  </div>
-                </div>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                <div className="rounded-3xl border border-white/10 bg-black/25 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-300/70">Saved library</div>
-                  <div className="mt-3 flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-3xl font-bold text-white">{savedDownloads.length}</div>
-                      <div className="text-sm text-emerald-100/60">Desktop-ready files</div>
-                    </div>
-                    <div className="rounded-2xl bg-emerald-400/10 p-3 text-emerald-200">
-                      <FolderOpen className="h-5 w-5" />
-                    </div>
-                  </div>
-                  <div className="mt-3 text-xs text-emerald-100/55">Using {formatBytes(totalSavedSize)} on disk</div>
+              <div className="flex flex-wrap gap-2 text-xs font-medium">
+                <div
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 ${
+                    isOffline
+                      ? 'border-red-500/40 bg-red-900/20 text-red-300'
+                      : 'border-emerald-500/40 bg-emerald-900/20 text-emerald-300'
+                  }`}
+                >
+                  {isOffline ? <WifiOff className="h-3.5 w-3.5" /> : <Wifi className="h-3.5 w-3.5" />}
+                  {isOffline ? 'Offline' : 'Online'}
                 </div>
-
-                <div className="rounded-3xl border border-white/10 bg-black/25 p-4">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-300/70">Offline vault</div>
-                  <div className="mt-3 flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-3xl font-bold text-white">{offlineDownloads.length}</div>
-                      <div className="text-sm text-emerald-100/60">Browser-stored videos</div>
-                    </div>
-                    <div className="rounded-2xl bg-sky-400/10 p-3 text-sky-200">
-                      <WifiOff className="h-5 w-5" />
-                    </div>
-                  </div>
-                  <div className="mt-3 text-xs text-emerald-100/55">Using {formatBytes(totalOfflineSize)} offline</div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                  <Radio className="h-3.5 w-3.5 text-emerald-300" />
+                  {status}
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                  <FolderOpen className="h-3.5 w-3.5 text-emerald-300" />
+                  {savedDownloads.length} saved
+                </div>
+                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                  <WifiOff className="h-3.5 w-3.5 text-emerald-300" />
+                  {offlineDownloads.length} offline
                 </div>
               </div>
             </div>
@@ -1654,7 +1648,7 @@ export default function App() {
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="relative z-10 overflow-hidden rounded-[1.75rem] border border-emerald-800/40 bg-zinc-900/60 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.3)] backdrop-blur">
+            <div className="relative z-10 overflow-hidden rounded-[1.25rem] border border-emerald-800/40 bg-zinc-900/60 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur">
               <div className="flex flex-col gap-3 xl:flex-row">
                 <div className="relative flex-1">
                   <input
@@ -1680,9 +1674,9 @@ export default function App() {
                       }
                     }}
                     placeholder="Paste YouTube URL or search for a video..."
-                    className="w-full rounded-2xl border border-emerald-800/50 bg-zinc-950/80 px-4 py-4 pl-12 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
+                    className="w-full rounded-xl border border-emerald-800/50 bg-zinc-950/80 px-4 py-3 pl-12 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
                   />
-                  <Search className="absolute left-4 top-4.5 h-5 w-5 text-emerald-500" />
+                  <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
 
                   {showSuggestions && suggestions.length > 0 && (
                     <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-emerald-800/50 bg-zinc-900 shadow-2xl">
@@ -1705,7 +1699,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => void handlePasteClipboard()}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 font-semibold text-emerald-100 transition-colors hover:bg-white/10"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10"
                 >
                   <Clipboard className="h-5 w-5" />
                   Paste
@@ -1714,7 +1708,7 @@ export default function App() {
                 <button
                   onClick={() => void handleSearch()}
                   disabled={isSearching}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-4 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
                 >
                   {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
                 </button>
@@ -1723,7 +1717,7 @@ export default function App() {
                   <button
                     onClick={() => void handleLinkDownload()}
                     disabled={Boolean(downloadState) || isOffline}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-6 py-4 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {downloadState?.key === 'link-download' ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -1745,43 +1739,11 @@ export default function App() {
                 <button
                   onClick={() => void handleRecognize()}
                   disabled={isRecognizing || isOffline}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-700/50 bg-zinc-950/70 px-6 py-4 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-950/70 px-5 py-3 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
                   {isOffline ? 'Needs internet' : isRecognizing ? 'Listening...' : 'Recognize'}
                 </button>
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <Sparkles className="h-4 w-4" />
-                  Quick start
-                </div>
-                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
-                  Paste a full video link, hit Search, then use the planner below to choose the smartest save option.
-                </p>
-              </div>
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <HardDriveDownload className="h-4 w-4" />
-                  Storage snapshot
-                </div>
-                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
-                  Desktop files: {formatBytes(totalSavedSize)}. Offline browser copies: {formatBytes(totalOfflineSize)}.
-                </p>
-              </div>
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <Clock3 className="h-4 w-4" />
-                  Recent cache
-                </div>
-                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
-                  {offlineLibrary.length > 0
-                    ? `${offlineLibrary.length} recently opened videos stay visible when the app goes offline.`
-                    : 'Open a few videos online and they will appear here for offline browsing later.'}
-                </p>
               </div>
             </div>
           </div>
@@ -1891,19 +1853,19 @@ export default function App() {
         )}
 
         {!selectedVideo && (savedDownloads.length > 0 || offlineDownloads.length > 0) && (
-          <div className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="rounded-[1.25rem] border border-emerald-800/30 bg-zinc-900/55 p-4 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <LayoutGrid className="h-4 w-4" />
-                  Library Finder
+                  Library
                 </div>
                 <p className="mt-1 text-sm text-emerald-100/65">
-                  Search your saved files and offline copies without leaving the home screen.
+                  Search, filter, and sort your saved items.
                 </p>
               </div>
 
-              <div className="w-full max-w-xl">
+              <div className="w-full max-w-lg">
                 <div className="relative">
                   <Search className="absolute left-4 top-3.5 h-4 w-4 text-emerald-600" />
                   <input
@@ -1917,21 +1879,89 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
-                {filteredSavedDownloads.length} saved files
+            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setLibraryFilter('all')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    libraryFilter === 'all'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryFilter('saved')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    libraryFilter === 'saved'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  Saved files
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibraryFilter('offline')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    libraryFilter === 'offline'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  Offline copies
+                </button>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
-                {filteredOfflineDownloads.length} offline copies
+
+              <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setLibrarySort('newest')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    librarySort === 'newest'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  Newest
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibrarySort('size')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    librarySort === 'size'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  Largest
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLibrarySort('title')}
+                  className={`rounded-full border px-3 py-1.5 transition-colors ${
+                    librarySort === 'title'
+                      ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-100'
+                      : 'border-white/10 bg-white/5 text-emerald-100/80'
+                  }`}
+                >
+                  A-Z
+                </button>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
-                {offlineLibrary.length} cached history items
-              </div>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-emerald-100/65">
+              <div>{visibleSavedDownloads.length} saved files</div>
+              <div>{visibleOfflineDownloads.length} offline copies</div>
+              <div>{offlineLibrary.length} cached history items</div>
             </div>
           </div>
         )}
 
-        {showOfflineDownloadsShelf && (
+        {shouldShowOfflineSection && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -1945,7 +1975,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {filteredOfflineDownloads.map((download) => (
+              {visibleOfflineDownloads.map((download) => (
                 <button
                   type="button"
                   key={`offline-${download.id}`}
@@ -1979,7 +2009,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            {filteredOfflineDownloads.length === 0 && (
+            {visibleOfflineDownloads.length === 0 && (
               <div className="rounded-2xl border border-dashed border-emerald-800/40 bg-zinc-950/30 px-4 py-6 text-sm text-emerald-400">
                 No offline downloads matched "{libraryQuery}".
               </div>
@@ -1987,7 +2017,7 @@ export default function App() {
           </div>
         )}
 
-        {savedDownloads.length > 0 && (
+        {shouldShowSavedSection && (
           <div ref={savedFilesSectionRef} className="space-y-4">
             <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -2000,7 +2030,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {filteredSavedDownloads.map((download) => (
+              {visibleSavedDownloads.map((download) => (
                 <button
                   type="button"
                   key={`saved-${download.id}`}
@@ -2036,7 +2066,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            {filteredSavedDownloads.length === 0 && (
+            {visibleSavedDownloads.length === 0 && (
               <div className="rounded-2xl border border-dashed border-emerald-800/40 bg-zinc-950/30 px-4 py-6 text-sm text-emerald-400">
                 No saved files matched "{libraryQuery}".
               </div>
@@ -2213,15 +2243,15 @@ export default function App() {
                         </div>
                       )}
 
-                      <div className="rounded-3xl border border-emerald-700/30 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(15,23,42,0.9))] p-5">
+                      <div className="rounded-2xl border border-emerald-700/25 bg-emerald-950/20 p-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Sparkles className="h-4 w-4" />
-                              Smart download planner
+                              Download planner
                             </div>
-                            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-100/70">
-                              Use this to choose the fastest practical save instead of checking every format manually.
+                            <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-100/65">
+                              Quick picks for the best local save and offline copy.
                             </p>
                           </div>
                           <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -2236,8 +2266,8 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="mt-5 grid gap-3 md:grid-cols-3">
-                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="mt-4 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border border-white/10 bg-black/15 p-3">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Video className="h-4 w-4" />
                               Best video
@@ -2250,7 +2280,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <div className="rounded-xl border border-white/10 bg-black/15 p-3">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Headphones className="h-4 w-4" />
                               Best audio
@@ -2265,7 +2295,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                          <div className="rounded-xl border border-white/10 bg-black/15 p-3">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <HardDriveDownload className="h-4 w-4" />
                               Storage estimate
@@ -2279,12 +2309,12 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="mt-3 grid gap-3 md:grid-cols-2">
                           <button
                             type="button"
                             onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
                             disabled={Boolean(downloadState) || isOffline}
-                            className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-4 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-3 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
                               <div className="text-sm font-semibold text-white">Save best portable version</div>
@@ -2299,7 +2329,7 @@ export default function App() {
                             type="button"
                             onClick={() => void handleSaveOfflineDownload()}
                             disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
-                            className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
                               <div className="text-sm font-semibold text-white">Keep an offline app copy</div>
