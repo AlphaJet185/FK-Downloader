@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Clipboard,
   Clock3,
   Download,
@@ -17,6 +19,8 @@ import {
   Radio,
   Search,
   Settings,
+  SkipBack,
+  SkipForward,
   Sparkles,
   UploadCloud,
   Video,
@@ -111,8 +115,15 @@ const OFFLINE_MODE_MESSAGE =
   'Recent searches and opened videos stay available. Recognition, preview, downloads, and YouTube links come back when you reconnect.';
 
 function formatDuration(seconds: number) {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
+  const safeSeconds = Math.max(0, Math.floor(seconds || 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
@@ -189,6 +200,14 @@ function getQualityRank(label: string) {
   if (normalized.includes('medium')) return 480;
   if (normalized.includes('low')) return 360;
   return 0;
+}
+
+function clampPlaybackTime(nextTime: number, duration: number) {
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return Math.max(0, nextTime);
+  }
+
+  return Math.min(Math.max(0, nextTime), duration);
 }
 
 function formatRemainingEstimate(remainingMs: number | null | undefined) {
@@ -778,6 +797,84 @@ export default function App() {
     void loadVideoDetails(video);
   };
 
+  const recordRecognitionBlob = async (stream: MediaStream, durationMs = 8000) => {
+    const supportedMimeType = MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : '';
+
+    const chunks: BlobPart[] = [];
+    const recorder = supportedMimeType
+      ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+      : new MediaRecorder(stream);
+    const recordedMimeType = recorder.mimeType || supportedMimeType || 'audio/webm';
+
+    mediaRecorderRef.current = recorder;
+
+    const recordedBlob = await new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+
+      recorder.onerror = () => reject(new Error('Recording failed'));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: recordedMimeType }));
+
+      recorder.start();
+      window.setTimeout(() => {
+        if (recorder.state !== 'inactive') {
+          recorder.stop();
+        }
+      }, durationMs);
+    });
+
+    mediaRecorderRef.current = null;
+    return recordedBlob;
+  };
+
+  const submitRecognitionBlob = async (recordedBlob: Blob) => {
+    setStatus('Recognizing');
+
+    const formData = new FormData();
+    formData.append('audio', recordedBlob, 'recognition.webm');
+
+    const res = await fetch('/api/recognize', {
+      method: 'POST',
+      body: formData
+    });
+
+    const recognizeText = await res.text();
+    const payload = parseJsonSafely(recognizeText);
+
+    if (!payload && recognizeText.trim().startsWith('<')) {
+      throw new Error('Recognition API returned HTML instead of JSON.');
+    }
+
+    if (!res.ok) {
+      throw new Error(payload?.error || 'Recognition failed');
+    }
+
+    const match = payload?.result;
+    if (!match?.title) {
+      throw new Error('No song match found');
+    }
+
+    const recognized: RecognitionResult = {
+      artist: match.artist || 'Unknown Artist',
+      title: match.title,
+      album: match.album,
+      releaseDate: match.release_date
+    };
+
+    const recognizedQuery = `${recognized.artist} - ${recognized.title}`;
+    setRecognition(recognized);
+    setQuery(recognizedQuery);
+    setStatus('Match found');
+    await handleSearch(recognizedQuery);
+  };
+
   const handleRecognize = async () => {
     if (isOffline) {
       setError('Recognition needs an internet connection.');
@@ -797,71 +894,11 @@ export default function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
-
-      const chunks: BlobPart[] = [];
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      mediaRecorderRef.current = recorder;
-
-      const recordedBlob = await new Promise<Blob>((resolve, reject) => {
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            chunks.push(event.data);
-          }
-        };
-
-        recorder.onerror = () => reject(new Error('Recording failed'));
-        recorder.onstop = () => resolve(new Blob(chunks, { type: 'audio/webm' }));
-
-        recorder.start();
-        window.setTimeout(() => {
-          if (recorder.state !== 'inactive') {
-            recorder.stop();
-          }
-        }, 8000);
-      });
+      const recordedBlob = await recordRecognitionBlob(stream);
 
       stream.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
-      mediaRecorderRef.current = null;
-
-      setStatus('Recognizing');
-
-      const formData = new FormData();
-      formData.append('audio', recordedBlob, 'recognition.webm');
-
-      const res = await fetch('/api/recognize', {
-        method: 'POST',
-        body: formData
-      });
-
-      const recognizeText = await res.text();
-      const payload = parseJsonSafely(recognizeText);
-
-      if (!payload && recognizeText.trim().startsWith('<')) {
-        throw new Error('Recognition API returned HTML instead of JSON.');
-      }
-
-      if (!res.ok) {
-        throw new Error(payload?.error || 'Recognition failed');
-      }
-
-      const match = payload?.result;
-      if (!match?.title) {
-        throw new Error('No song match found');
-      }
-
-      const recognized: RecognitionResult = {
-        artist: match.artist || 'Unknown Artist',
-        title: match.title,
-        album: match.album,
-        releaseDate: match.release_date
-      };
-
-      const recognizedQuery = `${recognized.artist} - ${recognized.title}`;
-      setRecognition(recognized);
-      setQuery(recognizedQuery);
-      setStatus('Match found');
-      await handleSearch(recognizedQuery);
+      await submitRecognitionBlob(recordedBlob);
     } catch (err: any) {
       mediaRecorderRef.current = null;
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -869,6 +906,63 @@ export default function App() {
       setRecognition(null);
       setStatus('Idle');
       setError(err?.message || 'Failed to recognize music.');
+    } finally {
+      setIsRecognizing(false);
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    }
+  };
+
+  const handleRecognizeCurrentVideo = async () => {
+    if (isOffline) {
+      setError('Recognition from video needs an internet connection.');
+      return;
+    }
+
+    const player = previewVideoRef.current;
+    if (!player || !previewSourceUrl) {
+      setError('Play an online preview first to recognize from it.');
+      return;
+    }
+
+    const captureStream =
+      'captureStream' in player
+        ? (player as HTMLVideoElement & { captureStream?: () => MediaStream }).captureStream?.()
+        : undefined;
+
+    if (!captureStream || captureStream.getAudioTracks().length === 0) {
+      setError('This browser cannot capture audio from the current preview. Use microphone recognize instead.');
+      return;
+    }
+
+    setIsRecognizing(true);
+    setError('');
+    setStatus('Listening to preview');
+    setShowSuggestions(false);
+
+    const shouldResumeAfter = player.paused;
+
+    try {
+      if (player.paused) {
+        setIsPreviewLoading(true);
+        await player.play();
+      }
+
+      const audioStream = new MediaStream(captureStream.getAudioTracks());
+      const recordedBlob = await recordRecognitionBlob(audioStream, 7000);
+      audioStream.getTracks().forEach((track) => track.stop());
+
+      if (shouldResumeAfter) {
+        player.pause();
+        setIsPreviewPlaying(false);
+        setIsPreviewLoading(false);
+      }
+
+      await submitRecognitionBlob(recordedBlob);
+    } catch (err: any) {
+      mediaRecorderRef.current = null;
+      setRecognition(null);
+      setStatus('Idle');
+      setError(err?.message || 'Failed to recognize from current video.');
     } finally {
       setIsRecognizing(false);
       window.setTimeout(() => setStatus('Idle'), 1500);
@@ -1206,6 +1300,50 @@ export default function App() {
     }
   };
 
+  const updatePreviewPosition = (nextTime: number) => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    const duration = player.duration || videoDetails?.duration || selectedVideo?.duration || 0;
+    const clampedTime = clampPlaybackTime(nextTime, duration);
+    player.currentTime = clampedTime;
+    setPreviewCurrentTime(clampedTime);
+    setPreviewDuration(duration);
+  };
+
+  const updateSavedPreviewPosition = (nextTime: number) => {
+    const player = savedPreviewVideoRef.current;
+    if (!player) return;
+
+    const duration = player.duration || selectedSavedDownload?.duration || 0;
+    const clampedTime = clampPlaybackTime(nextTime, duration);
+    player.currentTime = clampedTime;
+    setSavedPreviewCurrentTime(clampedTime);
+    setSavedPreviewDuration(duration);
+  };
+
+  const jumpPreviewBy = (deltaSeconds: number) => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    updatePreviewPosition((player.currentTime || 0) + deltaSeconds);
+  };
+
+  const jumpSavedPreviewBy = (deltaSeconds: number) => {
+    const player = savedPreviewVideoRef.current;
+    if (!player) return;
+
+    updateSavedPreviewPosition((player.currentTime || 0) + deltaSeconds);
+  };
+
+  const handlePreviewScrub = (event: React.ChangeEvent<HTMLInputElement>) => {
+    updatePreviewPosition(Number(event.target.value));
+  };
+
+  const handleSavedPreviewScrub = (event: React.ChangeEvent<HTMLInputElement>) => {
+    updateSavedPreviewPosition(Number(event.target.value));
+  };
+
   const togglePreviewPlayback = async () => {
     if (isOffline && !offlinePlaybackUrl) {
       setError('Preview playback needs an internet connection.');
@@ -1256,6 +1394,22 @@ export default function App() {
     setIsPreviewLoading(false);
   };
 
+  const handlePreviousVideo = () => {
+    if (!previousVideo) {
+      return;
+    }
+
+    void loadVideoDetails(previousVideo);
+  };
+
+  const handleNextVideo = () => {
+    if (!nextVideo) {
+      return;
+    }
+
+    void loadVideoDetails(nextVideo);
+  };
+
   const handleSavedPreviewTimeUpdate = () => {
     const player = savedPreviewVideoRef.current;
     if (!player) return;
@@ -1279,6 +1433,22 @@ export default function App() {
   const handleSavedPreviewPause = () => {
     setIsSavedPreviewPlaying(false);
     setIsSavedPreviewLoading(false);
+  };
+
+  const handlePreviousSavedDownload = () => {
+    if (!previousSavedDownload) {
+      return;
+    }
+
+    handleSavedDownloadClick(previousSavedDownload);
+  };
+
+  const handleNextSavedDownload = () => {
+    if (!nextSavedDownload) {
+      return;
+    }
+
+    handleSavedDownloadClick(nextSavedDownload);
   };
 
   const toggleSavedPreviewPlayback = async () => {
@@ -1401,6 +1571,14 @@ export default function App() {
   const selectedThumbnail =
     (selectedVideo && (videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id))) ||
     '';
+  const selectedVideoIndex = selectedVideo
+    ? visibleResults.findIndex((result) => result.id === selectedVideo.id)
+    : -1;
+  const previousVideo = selectedVideoIndex > 0 ? visibleResults[selectedVideoIndex - 1] : null;
+  const nextVideo =
+    selectedVideoIndex >= 0 && selectedVideoIndex < visibleResults.length - 1
+      ? visibleResults[selectedVideoIndex + 1]
+      : null;
   const normalizedLibraryQuery = libraryQuery.trim().toLowerCase();
   const filteredOfflineDownloads = offlineDownloads.filter((download) => {
     if (!normalizedLibraryQuery) {
@@ -1439,6 +1617,15 @@ export default function App() {
   };
   const visibleOfflineDownloads: OfflineDownloadMeta[] = sortByMode(filteredOfflineDownloads);
   const visibleSavedDownloads: SavedDownloadRecord[] = sortByMode(filteredSavedDownloads);
+  const selectedSavedDownloadIndex = selectedSavedDownload
+    ? visibleSavedDownloads.findIndex((download) => download.id === selectedSavedDownload.id)
+    : -1;
+  const previousSavedDownload =
+    selectedSavedDownloadIndex > 0 ? visibleSavedDownloads[selectedSavedDownloadIndex - 1] : null;
+  const nextSavedDownload =
+    selectedSavedDownloadIndex >= 0 && selectedSavedDownloadIndex < visibleSavedDownloads.length - 1
+      ? visibleSavedDownloads[selectedSavedDownloadIndex + 1]
+      : null;
   const shouldShowOfflineSection = showOfflineDownloadsShelf && (libraryFilter === 'all' || libraryFilter === 'offline');
   const shouldShowSavedSection = savedDownloads.length > 0 && (libraryFilter === 'all' || libraryFilter === 'saved');
   const totalOfflineSize = offlineDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
@@ -2154,18 +2341,41 @@ export default function App() {
                     <OfflineCopyBadge className="absolute left-3 top-3" />
                   </div>
                   <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
-                    <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                      <div
-                        className="h-full rounded-full bg-emerald-500 transition-[width]"
-                        style={{
-                          width: `${savedPreviewDuration > 0 ? (savedPreviewCurrentTime / savedPreviewDuration) * 100 : 0}%`
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-mono text-xs text-emerald-400">
-                        {formatDuration(Math.floor(savedPreviewCurrentTime || 0))}
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.max(savedPreviewDuration || selectedSavedDownload.duration || 0, 0)}
+                      step={1}
+                      value={Math.min(savedPreviewCurrentTime, savedPreviewDuration || selectedSavedDownload.duration || 0)}
+                      onChange={handleSavedPreviewScrub}
+                      className="mb-3 h-1.5 w-full cursor-pointer accent-emerald-500"
+                    />
+                    <div className="mb-3 flex items-center justify-between text-[11px] font-mono text-emerald-400">
+                      <span>{formatDuration(Math.floor(savedPreviewCurrentTime || 0))}</span>
+                      <span>
+                        {formatRemainingDuration(
+                          savedPreviewCurrentTime,
+                          savedPreviewDuration || selectedSavedDownload.duration || 0
+                        )}
                       </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={handlePreviousSavedDownload}
+                        disabled={!previousSavedDownload}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => jumpSavedPreviewBy(-10)}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                      >
+                        <SkipBack className="h-4 w-4" />
+                      </button>
+                      <span className="font-mono text-xs text-emerald-400">-10s</span>
                       <button
                         type="button"
                         onClick={() => void toggleSavedPreviewPlayback()}
@@ -2180,12 +2390,22 @@ export default function App() {
                           <Play className="ml-0.5 h-5 w-5" />
                         )}
                       </button>
-                      <span className="font-mono text-xs text-emerald-400">
-                        {formatRemainingDuration(
-                          savedPreviewCurrentTime,
-                          savedPreviewDuration || selectedSavedDownload.duration || 0
-                        )}
-                      </span>
+                      <span className="font-mono text-xs text-emerald-400">+10s</span>
+                      <button
+                        type="button"
+                        onClick={() => jumpSavedPreviewBy(10)}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                      >
+                        <SkipForward className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNextSavedDownload}
+                        disabled={!nextSavedDownload}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2201,6 +2421,27 @@ export default function App() {
                   />
                 </div>
               )}
+
+              <div className="mb-3 flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePreviousSavedDownload}
+                  disabled={!previousSavedDownload}
+                  className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                  Prev
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextSavedDownload}
+                  disabled={!nextSavedDownload}
+                  className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
 
               <h2 className="mb-2 font-bold text-emerald-100">{selectedSavedDownload.title}</h2>
               <p className="mb-1 text-sm font-medium text-emerald-500">{selectedSavedDownload.channel}</p>
@@ -2526,17 +2767,42 @@ export default function App() {
                       )}
                     </div>
                     <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
-                      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-                        <div
-                          className="h-full rounded-full bg-emerald-500 transition-[width]"
-                          style={{
-                            width: `${previewDuration > 0 ? (previewCurrentTime / previewDuration) * 100 : 0}%`
-                          }}
-                        />
+                      <input
+                        type="range"
+                        min={0}
+                        max={Math.max(previewDuration || videoDetails?.duration || selectedVideo.duration || 0, 0)}
+                        step={1}
+                        value={Math.min(previewCurrentTime, previewDuration || videoDetails?.duration || selectedVideo.duration || 0)}
+                        onChange={handlePreviewScrub}
+                        className="mb-3 h-1.5 w-full cursor-pointer accent-emerald-500"
+                      />
+                      <div className="mb-3 flex items-center justify-between text-[11px] font-mono text-emerald-400">
+                        <span>{formatDuration(Math.floor(previewCurrentTime || 0))}</span>
+                        <span>
+                          {formatRemainingDuration(
+                            previewCurrentTime,
+                            previewDuration || videoDetails?.duration || selectedVideo.duration || 0
+                          )}
+                        </span>
                       </div>
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={handlePreviousVideo}
+                          disabled={!previousVideo}
+                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => jumpPreviewBy(-10)}
+                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                        >
+                          <SkipBack className="h-4 w-4" />
+                        </button>
                         <span className="font-mono text-xs text-emerald-400">
-                          {formatDuration(Math.floor(previewCurrentTime || 0))}
+                          -10s
                         </span>
                         <button
                           type="button"
@@ -2553,12 +2819,35 @@ export default function App() {
                           )}
                         </button>
                         <span className="font-mono text-xs text-emerald-400">
-                          {formatRemainingDuration(
-                            previewCurrentTime,
-                            previewDuration || videoDetails?.duration || selectedVideo.duration || 0
-                          )}
+                          +10s
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => jumpPreviewBy(10)}
+                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                        >
+                          <SkipForward className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleNextVideo}
+                          disabled={!nextVideo}
+                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
                       </div>
+                      {!isOffline && (
+                        <button
+                          type="button"
+                          onClick={() => void handleRecognizeCurrentVideo()}
+                          disabled={isRecognizing || !previewSourceUrl}
+                          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-950/30 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isRecognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
+                          Recognize from this point
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -2595,6 +2884,26 @@ export default function App() {
                     )}
                   </>
                 )}
+                <div className="mb-3 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePreviousVideo}
+                    disabled={!previousVideo}
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNextVideo}
+                    disabled={!nextVideo}
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Next
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
                 <h2 className="mb-2 font-bold text-emerald-100">{videoDetails?.title || selectedVideo.title}</h2>
                 <p className="mb-1 text-sm font-medium text-emerald-500">{videoDetails?.channel || selectedVideo.channel}</p>
                 <p className="font-mono text-xs text-emerald-700">
