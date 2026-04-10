@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "desktop:dev": "electron electron/main.js",
     "desktop:pack": "vite build && electron-builder --dir",
-    "desktop:build": "vite build && electron-builder",
+    "desktop:build": "vite build && electron-builder --publish never",
     "tunnel:quick": "cloudflared tunnel --url http://localhost:3000",
     "tunnel:run": "cloudflared tunnel --config .cloudflared/config.yml run",
     "lint": "tsc --noEmit",
@@ -89,13 +89,6 @@
     "appId": "com.alphajet.fkdownloader",
     "productName": "FK Downloader",
     "npmRebuild": false,
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "AlphaJet185",
-        "repo": "FK-Downloader"
-      }
-    ],
     "directories": {
       "output": "release"
     },
@@ -117,7 +110,7 @@
     "win": {
       "signAndEditExecutable": false,
       "target": [
-        "nsis"
+        "portable"
       ],
       "icon": "static/favicon.ico"
     },

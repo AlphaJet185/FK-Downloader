@@ -246,6 +246,16 @@ function toSearchResultFromOfflineDownload(download: OfflineDownloadMeta): Searc
   };
 }
 
+function OfflineCopyBadge({ className = '' }: { className?: string }) {
+  return (
+    <div
+      className={`inline-flex items-center gap-1 rounded-full border border-emerald-400/40 bg-emerald-950/80 px-2 py-1 text-[11px] font-semibold text-emerald-200 shadow-lg ${className}`}
+    >
+      Offline Copy
+    </div>
+  );
+}
+
 export default function App() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -1298,6 +1308,7 @@ export default function App() {
   const showOfflineDownloadsShelf = !selectedVideo && offlineDownloads.length > 0 && (isOffline || visibleResults.length === 0);
   const hasSavedOfflineCopy = Boolean(selectedOfflineDownload);
   const previewSourceUrl = offlinePlaybackUrl || (!isOffline ? videoDetails?.previewUrl || '' : '');
+  const shouldMarkVisibleResultsAsOfflineCopy = showingOfflineLibrary || showingOfflineSearchResults;
   const selectedThumbnail =
     (selectedVideo && (videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id))) ||
     '';
@@ -1591,9 +1602,7 @@ export default function App() {
                     <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-emerald-400">
                       {formatDuration(download.duration)}
                     </div>
-                    <div className="absolute left-2 top-2 rounded-full border border-emerald-500/40 bg-emerald-950/70 px-2 py-1 text-[11px] font-semibold text-emerald-200">
-                      Saved Offline
-                    </div>
+                    <OfflineCopyBadge className="absolute left-2 top-2" />
                   </div>
 
                   <div className="flex flex-1 flex-col p-4">
@@ -1740,6 +1749,7 @@ export default function App() {
                         <span className="text-sm font-medium">Loading file...</span>
                       </div>
                     )}
+                    <OfflineCopyBadge className="absolute left-3 top-3" />
                   </div>
                   <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
                     <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
@@ -2011,9 +2021,7 @@ export default function App() {
                         </div>
                       )}
                       {offlinePlaybackUrl && (
-                        <div className="absolute left-3 top-3 rounded-full border border-emerald-400/40 bg-emerald-950/80 px-2 py-1 text-[11px] font-semibold text-emerald-200">
-                          Offline Copy
-                        </div>
+                        <OfflineCopyBadge className="absolute left-3 top-3" />
                       )}
                     </div>
                     <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
@@ -2115,6 +2123,7 @@ export default function App() {
                   <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-xs text-emerald-400">
                     {formatDuration(result.duration)}
                   </div>
+                  {shouldMarkVisibleResultsAsOfflineCopy && <OfflineCopyBadge className="absolute left-2 top-2" />}
                 </div>
 
                 <div className="flex flex-1 flex-col p-4">
