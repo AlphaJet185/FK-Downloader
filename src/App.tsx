@@ -1,8 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  Clipboard,
+  Clock3,
   Download,
   FolderOpen,
+  HardDriveDownload,
+  Headphones,
+  LayoutGrid,
   Loader2,
   MessageSquare,
   Mic,
@@ -12,7 +17,9 @@ import {
   Radio,
   Search,
   Settings,
+  Sparkles,
   UploadCloud,
+  Video,
   Wifi,
   WifiOff
 } from 'lucide-react';
@@ -127,6 +134,59 @@ function formatBytes(bytes: number) {
   }
 
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function parseApproxSize(sizeLabel: string) {
+  const match = sizeLabel.trim().match(/^([\d.]+)\s*([KMG]?)(?:B)?$/i);
+  if (!match) {
+    return null;
+  }
+
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  const unit = match[2].toUpperCase();
+  const multipliers: Record<string, number> = {
+    '': 1,
+    K: 1024,
+    M: 1024 * 1024,
+    G: 1024 * 1024 * 1024
+  };
+
+  return Math.round(value * (multipliers[unit] || 1));
+}
+
+function formatRelativeTime(timestamp: number) {
+  const delta = Date.now() - timestamp;
+
+  if (delta < 60_000) {
+    return 'just now';
+  }
+
+  if (delta < 3_600_000) {
+    return `${Math.max(1, Math.floor(delta / 60_000))} min ago`;
+  }
+
+  if (delta < 86_400_000) {
+    return `${Math.max(1, Math.floor(delta / 3_600_000))} hr ago`;
+  }
+
+  return `${Math.max(1, Math.floor(delta / 86_400_000))} day ago`;
+}
+
+function getQualityRank(label: string) {
+  const matchedHeight = label.match(/(\d{3,4})p/i);
+  if (matchedHeight) {
+    return Number(matchedHeight[1]);
+  }
+
+  const normalized = label.toLowerCase();
+  if (normalized.includes('high')) return 720;
+  if (normalized.includes('medium')) return 480;
+  if (normalized.includes('low')) return 360;
+  return 0;
 }
 
 function formatRemainingEstimate(remainingMs: number | null | undefined) {
@@ -284,6 +344,7 @@ export default function App() {
   const [savedDownloads, setSavedDownloads] = useState<SavedDownloadRecord[]>(() => getSavedDownloads());
   const [selectedSavedDownload, setSelectedSavedDownload] = useState<SavedDownloadRecord | null>(null);
   const [savedPlaybackUrl, setSavedPlaybackUrl] = useState('');
+  const [libraryQuery, setLibraryQuery] = useState('');
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
@@ -1122,6 +1183,25 @@ export default function App() {
     });
   };
 
+  const handlePasteClipboard = async () => {
+    try {
+      const clipboardText = (await navigator.clipboard.readText()).trim();
+
+      if (!clipboardText) {
+        setError('Clipboard is empty.');
+        return;
+      }
+
+      setError('');
+      setQuery(clipboardText);
+      setShowSuggestions(!looksLikeUrl(clipboardText));
+      setStatus('Clipboard ready');
+      void handleSearch(clipboardText);
+    } catch {
+      setError('Clipboard access was blocked. Paste the link manually if needed.');
+    }
+  };
+
   const togglePreviewPlayback = async () => {
     if (isOffline && !offlinePlaybackUrl) {
       setError('Preview playback needs an internet connection.');
@@ -1317,6 +1397,52 @@ export default function App() {
   const selectedThumbnail =
     (selectedVideo && (videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id))) ||
     '';
+  const normalizedLibraryQuery = libraryQuery.trim().toLowerCase();
+  const filteredOfflineDownloads = offlineDownloads.filter((download) => {
+    if (!normalizedLibraryQuery) {
+      return true;
+    }
+
+    return [download.title, download.channel, download.fileName].some((value) =>
+      value.toLowerCase().includes(normalizedLibraryQuery)
+    );
+  });
+  const filteredSavedDownloads = savedDownloads.filter((download) => {
+    if (!normalizedLibraryQuery) {
+      return true;
+    }
+
+    return [download.title, download.channel, download.fileName, download.filePath].some((value) =>
+      value.toLowerCase().includes(normalizedLibraryQuery)
+    );
+  });
+  const totalOfflineSize = offlineDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
+  const totalSavedSize = savedDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
+  const recommendedAudioFormat = [...(videoDetails?.audioFormats || [])].sort((left, right) => {
+    const sizeDelta = (parseApproxSize(right.contentLength) || 0) - (parseApproxSize(left.contentLength) || 0);
+    if (sizeDelta !== 0) {
+      return sizeDelta;
+    }
+
+    return right.bitrate - left.bitrate;
+  })[0];
+  const recommendedVideoFormat = [...(videoDetails?.videoFormats || [])].sort((left, right) => {
+    const qualityDelta = getQualityRank(right.qualityLabel) - getQualityRank(left.qualityLabel);
+    if (qualityDelta !== 0) {
+      return qualityDelta;
+    }
+
+    return (parseApproxSize(right.contentLength) || 0) - (parseApproxSize(left.contentLength) || 0);
+  })[0];
+  const recommendedPortableFormat =
+    videoDetails?.videoFormats?.find((format) => format.hasAudio && getQualityRank(format.qualityLabel) >= 720) ||
+    videoDetails?.videoFormats?.find((format) => format.hasAudio) ||
+    recommendedVideoFormat ||
+    null;
+  const plannerStorageEstimate =
+    selectedOfflineDownload?.sizeBytes ||
+    parseApproxSize(recommendedPortableFormat?.contentLength || '') ||
+    parseApproxSize(recommendedAudioFormat?.contentLength || '');
 
   const openSavedFilesView = () => {
     setActiveView('home');
@@ -1361,29 +1487,72 @@ export default function App() {
             </button>
           </div>
 
-          <div className="space-y-2 pt-16 text-center md:mx-auto md:max-w-3xl md:pt-2 md:pr-36">
-            <h1 className="flex items-center justify-center gap-3 pt-2 text-3xl font-bold text-emerald-400 sm:pt-0 sm:text-4xl">
-              <Download className="h-8 w-8 sm:h-10 sm:w-10" />
-              FK Downloader
-            </h1>
-            <p className="text-sm text-emerald-200/60 sm:text-base">
-              Search, preview, and open videos without extractor failures.
-            </p>
+          <div className="overflow-hidden rounded-[2rem] border border-emerald-800/40 bg-[radial-gradient(circle_at_top_left,_rgba(52,211,153,0.2),_transparent_32%),linear-gradient(135deg,rgba(2,6,23,0.92),rgba(6,78,59,0.42))] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.38)] backdrop-blur md:p-8">
+            <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+              <div className="space-y-4 pt-12 text-center md:pt-2 md:pr-24 md:text-left">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-200">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Media workspace
+                </div>
+                <h1 className="flex items-center justify-center gap-3 text-3xl font-bold text-white md:justify-start sm:text-5xl">
+                  <Download className="h-8 w-8 text-emerald-300 sm:h-10 sm:w-10" />
+                  FK Downloader
+                </h1>
+                <p className="max-w-2xl text-sm leading-7 text-emerald-100/70 sm:text-base">
+                  Search YouTube faster, preview before you save, and keep a cleaner local library with offline copies
+                  and desktop downloads in one place.
+                </p>
 
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium sm:gap-4 sm:text-sm">
-              <div
-                className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
-                  isOffline
-                    ? 'border-red-500/50 bg-red-900/30 text-red-400'
-                    : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-400'
-                }`}
-              >
-                {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
-                {isOffline ? 'Offline Mode' : 'Online Mode'}
+                <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium md:justify-start sm:text-sm">
+                  <div
+                    className={`flex items-center gap-2 rounded-full border px-3 py-1 ${
+                      isOffline
+                        ? 'border-red-500/50 bg-red-900/30 text-red-300'
+                        : 'border-emerald-500/50 bg-emerald-900/30 text-emerald-300'
+                    }`}
+                  >
+                    {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
+                    {isOffline ? 'Offline mode' : 'Online mode'}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-emerald-100/80">
+                    <Radio className="h-4 w-4 text-emerald-300" />
+                    Status: {status}
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-emerald-100/80">
+                    <LayoutGrid className="h-4 w-4 text-emerald-300" />
+                    {savedDownloads.length + offlineDownloads.length} items ready
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-emerald-800/50 bg-zinc-900/50 px-3 py-1 text-emerald-300">
-                <Radio className="h-4 w-4" />
-                Status: {status}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <div className="rounded-3xl border border-white/10 bg-black/25 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-300/70">Saved library</div>
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-3xl font-bold text-white">{savedDownloads.length}</div>
+                      <div className="text-sm text-emerald-100/60">Desktop-ready files</div>
+                    </div>
+                    <div className="rounded-2xl bg-emerald-400/10 p-3 text-emerald-200">
+                      <FolderOpen className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-emerald-100/55">Using {formatBytes(totalSavedSize)} on disk</div>
+                </div>
+
+                <div className="rounded-3xl border border-white/10 bg-black/25 p-4">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-300/70">Offline vault</div>
+                  <div className="mt-3 flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-3xl font-bold text-white">{offlineDownloads.length}</div>
+                      <div className="text-sm text-emerald-100/60">Browser-stored videos</div>
+                    </div>
+                    <div className="rounded-2xl bg-sky-400/10 p-3 text-sky-200">
+                      <WifiOff className="h-5 w-5" />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-xs text-emerald-100/55">Using {formatBytes(totalOfflineSize)} offline</div>
+                </div>
               </div>
             </div>
           </div>
@@ -1484,95 +1653,138 @@ export default function App() {
             </div>
           </div>
         ) : (
-        <div className="relative z-10">
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="relative flex-1">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setShowSuggestions(!looksLikeUrl(e.target.value));
-                }}
-                onFocus={() => {
-                  if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
-                    setShowSuggestions(true);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    setShowSuggestions(false);
-                    suggestAbortRef.current?.abort();
-                    searchInputRef.current?.blur();
-                    void handleSearch();
-                  }
-                }}
-                placeholder="Paste YouTube URL or search for a video..."
-                className="w-full rounded-xl border border-emerald-800/50 bg-zinc-900 px-4 py-3 pl-11 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
-              />
-              <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-600" />
+          <div className="space-y-4">
+            <div className="relative z-10 overflow-hidden rounded-[1.75rem] border border-emerald-800/40 bg-zinc-900/60 p-4 shadow-[0_24px_70px_rgba(0,0,0,0.3)] backdrop-blur">
+              <div className="flex flex-col gap-3 xl:flex-row">
+                <div className="relative flex-1">
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setShowSuggestions(!looksLikeUrl(e.target.value));
+                    }}
+                    onFocus={() => {
+                      if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
+                        setShowSuggestions(true);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        setShowSuggestions(false);
+                        suggestAbortRef.current?.abort();
+                        searchInputRef.current?.blur();
+                        void handleSearch();
+                      }
+                    }}
+                    placeholder="Paste YouTube URL or search for a video..."
+                    className="w-full rounded-2xl border border-emerald-800/50 bg-zinc-950/80 px-4 py-4 pl-12 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
+                  />
+                  <Search className="absolute left-4 top-4.5 h-5 w-5 text-emerald-500" />
 
-              {showSuggestions && suggestions.length > 0 && (
-                <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-emerald-800/50 bg-zinc-900 shadow-2xl">
-                  {suggestions.map((suggestion, index) => (
-                    <li
-                      key={`${suggestion}-${index}`}
-                      onClick={() => {
-                        setQuery(suggestion);
-                        void handleSearch(suggestion);
-                      }}
-                      className="cursor-pointer px-4 py-2 text-sm text-emerald-200 transition-colors hover:bg-emerald-900/40 sm:text-base"
-                    >
-                      {suggestion}
-                    </li>
-                  ))}
-                </ul>
-              )}
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-emerald-800/50 bg-zinc-900 shadow-2xl">
+                      {suggestions.map((suggestion, index) => (
+                        <li
+                          key={`${suggestion}-${index}`}
+                          onClick={() => {
+                            setQuery(suggestion);
+                            void handleSearch(suggestion);
+                          }}
+                          className="cursor-pointer px-4 py-3 text-sm text-emerald-200 transition-colors hover:bg-emerald-900/40 sm:text-base"
+                        >
+                          {suggestion}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void handlePasteClipboard()}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 font-semibold text-emerald-100 transition-colors hover:bg-white/10"
+                >
+                  <Clipboard className="h-5 w-5" />
+                  Paste
+                </button>
+
+                <button
+                  onClick={() => void handleSearch()}
+                  disabled={isSearching}
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-6 py-4 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
+                >
+                  {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
+                </button>
+
+                {canDownloadPastedLink && (
+                  <button
+                    onClick={() => void handleLinkDownload()}
+                    disabled={Boolean(downloadState) || isOffline}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-950/40 px-6 py-4 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {downloadState?.key === 'link-download' ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : isOffline ? (
+                      <WifiOff className="h-5 w-5" />
+                    ) : (
+                      <Download className="h-5 w-5" />
+                    )}
+                    {isOffline
+                      ? 'Needs internet'
+                      : downloadState?.key === 'link-download'
+                        ? downloadState.phase === 'saving'
+                          ? 'Saving...'
+                          : 'Downloading...'
+                        : 'Download Link'}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => void handleRecognize()}
+                  disabled={isRecognizing || isOffline}
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-700/50 bg-zinc-950/70 px-6 py-4 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+                  {isOffline ? 'Needs internet' : isRecognizing ? 'Listening...' : 'Recognize'}
+                </button>
+              </div>
             </div>
 
-            <button
-              onClick={() => void handleSearch()}
-              disabled={isSearching}
-              className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:opacity-50"
-            >
-              {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
-            </button>
-
-            {canDownloadPastedLink && (
-              <button
-                onClick={() => void handleLinkDownload()}
-                disabled={Boolean(downloadState) || isOffline}
-                className="flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-emerald-950/40 px-6 py-3 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {downloadState?.key === 'link-download' ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : isOffline ? (
-                  <WifiOff className="h-5 w-5" />
-                ) : (
-                  <Download className="h-5 w-5" />
-                )}
-                {isOffline
-                  ? 'Needs internet'
-                  : downloadState?.key === 'link-download'
-                    ? downloadState.phase === 'saving'
-                      ? 'Saving...'
-                      : 'Downloading...'
-                    : 'Download Link'}
-              </button>
-            )}
-
-            <button
-              onClick={() => void handleRecognize()}
-              disabled={isRecognizing || isOffline}
-              className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-6 py-3 font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-              {isOffline ? 'Needs internet' : isRecognizing ? 'Listening...' : 'Recognize'}
-            </button>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <Sparkles className="h-4 w-4" />
+                  Quick start
+                </div>
+                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
+                  Paste a full video link, hit Search, then use the planner below to choose the smartest save option.
+                </p>
+              </div>
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <HardDriveDownload className="h-4 w-4" />
+                  Storage snapshot
+                </div>
+                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
+                  Desktop files: {formatBytes(totalSavedSize)}. Offline browser copies: {formatBytes(totalOfflineSize)}.
+                </p>
+              </div>
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-900/50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <Clock3 className="h-4 w-4" />
+                  Recent cache
+                </div>
+                <p className="mt-2 text-sm leading-6 text-emerald-100/65">
+                  {offlineLibrary.length > 0
+                    ? `${offlineLibrary.length} recently opened videos stay visible when the app goes offline.`
+                    : 'Open a few videos online and they will appear here for offline browsing later.'}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
         )}
 
         {isOffline && (
@@ -1678,6 +1890,47 @@ export default function App() {
           </div>
         )}
 
+        {!selectedVideo && (savedDownloads.length > 0 || offlineDownloads.length > 0) && (
+          <div className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/55 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <LayoutGrid className="h-4 w-4" />
+                  Library Finder
+                </div>
+                <p className="mt-1 text-sm text-emerald-100/65">
+                  Search your saved files and offline copies without leaving the home screen.
+                </p>
+              </div>
+
+              <div className="w-full max-w-xl">
+                <div className="relative">
+                  <Search className="absolute left-4 top-3.5 h-4 w-4 text-emerald-600" />
+                  <input
+                    type="text"
+                    value={libraryQuery}
+                    onChange={(e) => setLibraryQuery(e.target.value)}
+                    placeholder="Find in saved files and offline copies..."
+                    className="w-full rounded-2xl border border-emerald-800/50 bg-zinc-950/70 px-4 py-3 pl-11 text-sm text-emerald-100 placeholder-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                {filteredSavedDownloads.length} saved files
+              </div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                {filteredOfflineDownloads.length} offline copies
+              </div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                {offlineLibrary.length} cached history items
+              </div>
+            </div>
+          </div>
+        )}
+
         {showOfflineDownloadsShelf && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
@@ -1692,7 +1945,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {offlineDownloads.map((download) => (
+              {filteredOfflineDownloads.map((download) => (
                 <button
                   type="button"
                   key={`offline-${download.id}`}
@@ -1720,12 +1973,17 @@ export default function App() {
                     </h3>
                     <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
                     <div className="mt-auto text-xs font-medium text-emerald-500/70">
-                      {formatBytes(download.sizeBytes)} saved in browser
+                      {formatBytes(download.sizeBytes)} saved in browser • {formatRelativeTime(download.savedAt)}
                     </div>
                   </div>
                 </button>
               ))}
             </div>
+            {filteredOfflineDownloads.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-emerald-800/40 bg-zinc-950/30 px-4 py-6 text-sm text-emerald-400">
+                No offline downloads matched "{libraryQuery}".
+              </div>
+            )}
           </div>
         )}
 
@@ -1742,7 +2000,7 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {savedDownloads.map((download) => (
+              {filteredSavedDownloads.map((download) => (
                 <button
                   type="button"
                   key={`saved-${download.id}`}
@@ -1772,12 +2030,17 @@ export default function App() {
                     </h3>
                     <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
                     <div className="mt-auto text-xs font-medium text-emerald-500/70">
-                      {formatBytes(download.sizeBytes)} saved to {download.fileName}
+                      {formatBytes(download.sizeBytes)} • {download.fileName} • {formatRelativeTime(download.savedAt)}
                     </div>
                   </div>
                 </button>
               ))}
             </div>
+            {filteredSavedDownloads.length === 0 && (
+              <div className="rounded-2xl border border-dashed border-emerald-800/40 bg-zinc-950/30 px-4 py-6 text-sm text-emerald-400">
+                No saved files matched "{libraryQuery}".
+              </div>
+            )}
           </div>
         )}
 
@@ -1949,6 +2212,105 @@ export default function App() {
                           paused until the connection comes back.
                         </div>
                       )}
+
+                      <div className="rounded-3xl border border-emerald-700/30 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(15,23,42,0.9))] p-5">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Sparkles className="h-4 w-4" />
+                              Smart download planner
+                            </div>
+                            <p className="mt-2 max-w-2xl text-sm leading-6 text-emerald-100/70">
+                              Use this to choose the fastest practical save instead of checking every format manually.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+                            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                              {hasSavedOfflineCopy ? 'Offline copy ready' : 'No offline copy yet'}
+                            </div>
+                            <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                              {savedDownloads.some((item) => item.sourceId === selectedVideo.id)
+                                ? 'Saved in app'
+                                : 'Not in saved library'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 md:grid-cols-3">
+                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Video className="h-4 w-4" />
+                              Best video
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-white">
+                              {recommendedPortableFormat?.qualityLabel || 'Waiting for formats'}
+                            </div>
+                            <div className="mt-1 text-sm text-emerald-100/60">
+                              {recommendedPortableFormat?.contentLength || 'Size unknown'}
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Headphones className="h-4 w-4" />
+                              Best audio
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-white">
+                              {recommendedAudioFormat?.qualityLabel || 'Waiting for formats'}
+                            </div>
+                            <div className="mt-1 text-sm text-emerald-100/60">
+                              {recommendedAudioFormat?.bitrate
+                                ? `${Math.round(recommendedAudioFormat.bitrate)} kbps`
+                                : recommendedAudioFormat?.contentLength || 'Size unknown'}
+                            </div>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <HardDriveDownload className="h-4 w-4" />
+                              Storage estimate
+                            </div>
+                            <div className="mt-2 text-lg font-semibold text-white">
+                              {plannerStorageEstimate ? formatBytes(plannerStorageEstimate) : 'Unknown'}
+                            </div>
+                            <div className="mt-1 text-sm text-emerald-100/60">
+                              Enough for preview, offline save, or quick local download
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
+                            disabled={Boolean(downloadState) || isOffline}
+                            className="flex items-center justify-between rounded-2xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-4 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <div>
+                              <div className="text-sm font-semibold text-white">Save best portable version</div>
+                              <div className="mt-1 text-xs text-emerald-100/65">
+                                Recommended for local playback and sharing
+                              </div>
+                            </div>
+                            <Download className="h-5 w-5 text-emerald-200" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveOfflineDownload()}
+                            disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
+                            className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <div>
+                              <div className="text-sm font-semibold text-white">Keep an offline app copy</div>
+                              <div className="mt-1 text-xs text-emerald-100/65">
+                                Best when you want playback even without internet
+                              </div>
+                            </div>
+                            <WifiOff className="h-5 w-5 text-emerald-200" />
+                          </button>
+                        </div>
+                      </div>
 
                       <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
                         <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
