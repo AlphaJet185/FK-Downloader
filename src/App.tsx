@@ -1795,8 +1795,8 @@ export default function App() {
         </div>
       )}
 
-      <div className="relative z-10 mx-auto max-w-5xl space-y-12 lg:space-y-16">
-        <div className="relative pt-2">
+      <main className="relative z-10 mx-auto max-w-5xl space-y-12 lg:space-y-16">
+        <header className="relative pt-2">
           <div className="mb-4 flex justify-end sm:mb-5">
             <button
               type="button"
@@ -1818,8 +1818,11 @@ export default function App() {
                 Video downloader
               </div>
               <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
-                FK Downloader
+                Download Videos and Audio Instantly
               </h1>
+              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
+                FK Downloader
+              </p>
               <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-emerald-100/70 sm:text-base">
                 Paste a YouTube link or search keywords, then pick the format you want. Fast conversion, simple flow,
                 and your saved items stay close by.
@@ -1864,15 +1867,15 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
+        </header>
 
         {activeView === 'home' && (
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                 <Info className="h-4 w-4" />
                 How it works
-              </div>
+              </h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
@@ -1899,18 +1902,18 @@ export default function App() {
             </section>
 
             <aside className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                 <Clock3 className="h-4 w-4" />
                 About FK Downloader
-              </div>
+              </h2>
               <p className="mt-3 text-sm leading-6 text-emerald-100/70">
                 FK Downloader is a compact video utility for quick search, preview, saving, and offline playback.
                 It is designed to feel fast on desktop and touch-friendly on mobile.
               </p>
               <div className="mt-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">
                   Supported platforms
-                </div>
+                </h3>
                 <ul className="mt-3 space-y-2 text-sm text-emerald-100/70">
                   <li>Modern desktop browsers with video playback</li>
                   <li>Desktop app mode with local file saving</li>
@@ -2020,7 +2023,11 @@ export default function App() {
             <div className="relative z-10 overflow-hidden rounded-[1.5rem] border border-emerald-800/35 bg-zinc-900/55 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.2)] backdrop-blur-sm sm:p-6">
               <div className="mx-auto flex max-w-4xl flex-col gap-4 xl:flex-row">
                 <div className="relative flex-1">
+                  <label htmlFor="search-input" className="sr-only">
+                    Paste a YouTube URL or search for a video
+                  </label>
                   <input
+                    id="search-input"
                     ref={searchInputRef}
                     type="text"
                     value={query}
@@ -2044,9 +2051,13 @@ export default function App() {
                     }}
                     placeholder="Paste YouTube URL or search for a video..."
                     aria-label="Search videos or paste a YouTube URL"
+                    aria-describedby="search-help"
                     className="w-full rounded-2xl border border-emerald-700/35 bg-zinc-950/75 px-4 py-3.5 pl-12 text-sm text-emerald-100 placeholder-emerald-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
                   />
                   <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
+                  <p id="search-help" className="sr-only">
+                    Press Enter to search or use the download button once a URL is pasted.
+                  </p>
 
                   {showSuggestions && suggestions.length > 0 && (
                     <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-emerald-800/40 bg-zinc-900/98 shadow-2xl">
@@ -2070,27 +2081,29 @@ export default function App() {
                   type="button"
                   onClick={() => void handlePasteClipboard()}
                   aria-label="Paste a link from the clipboard"
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 sm:w-auto xl:min-w-[120px]"
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 sm:w-auto xl:min-w-[120px]"
                 >
                   <Clipboard className="h-5 w-5" />
                   Paste
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => void handleSearch()}
                   disabled={isSearching}
                   aria-label="Search videos"
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 sm:w-auto xl:min-w-[120px]"
+                  className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 sm:w-auto xl:min-w-[120px]"
                 >
                   {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
                 </button>
 
                 {canDownloadPastedLink && (
                   <button
+                    type="button"
                     onClick={() => void handleLinkDownload()}
                     disabled={Boolean(downloadState) || isOffline}
-                    aria-label="Download the pasted YouTube link"
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto xl:min-w-[150px]"
+                    aria-label="Download the pasted YouTube link now"
+                    className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto xl:min-w-[150px]"
                   >
                     {downloadState?.key === 'link-download' ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -2105,7 +2118,7 @@ export default function App() {
                         ? downloadState.phase === 'saving'
                           ? 'Saving...'
                           : 'Downloading...'
-                        : 'Download Link'}
+                      : 'Download Now'}
                   </button>
                 )}
 
@@ -2131,7 +2144,7 @@ export default function App() {
         )}
 
         {downloadState && (
-          <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-5">
+          <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-5" role="status" aria-live="polite" aria-atomic="true">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -2647,10 +2660,10 @@ export default function App() {
                       <div className="rounded-2xl border border-emerald-700/25 bg-emerald-950/20 p-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
-                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Sparkles className="h-4 w-4" />
                               Download planner
-                            </div>
+                            </h2>
                             <p className="mt-1 max-w-2xl text-sm leading-6 text-emerald-100/65">
                               Quick picks for the best local save and offline copy.
                             </p>
@@ -2669,10 +2682,10 @@ export default function App() {
 
                         <div className="mt-4 grid gap-3 md:grid-cols-3">
                           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Video className="h-4 w-4" />
                               Best video
-                            </div>
+                            </h3>
                             <div className="mt-2 text-lg font-semibold text-white">
                               {recommendedPortableFormat?.qualityLabel || 'Waiting for formats'}
                             </div>
@@ -2682,10 +2695,10 @@ export default function App() {
                           </div>
 
                           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Headphones className="h-4 w-4" />
                               Best audio
-                            </div>
+                            </h3>
                             <div className="mt-2 text-lg font-semibold text-white">
                               {recommendedAudioFormat ? getFormatLabel(recommendedAudioFormat) : 'Waiting for formats'}
                             </div>
@@ -2695,10 +2708,10 @@ export default function App() {
                           </div>
 
                           <div className="rounded-xl border border-white/10 bg-black/15 p-3">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                            <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <HardDriveDownload className="h-4 w-4" />
                               Storage estimate
-                            </div>
+                            </h3>
                             <div className="mt-2 text-lg font-semibold text-white">
                               {plannerStorageEstimate ? formatBytes(plannerStorageEstimate) : 'Unknown'}
                             </div>
@@ -2714,7 +2727,7 @@ export default function App() {
                             onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
                             disabled={Boolean(downloadState) || isOffline}
                             aria-label="Save the best portable version"
-                            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-3 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="flex min-h-[48px] items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-3 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
                               <div className="text-sm font-semibold text-white">Save best portable version</div>
@@ -2730,7 +2743,7 @@ export default function App() {
                             onClick={() => void handleSaveOfflineDownload()}
                             disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
                             aria-label="Keep an offline app copy"
-                            className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="flex min-h-[48px] items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
                               <div className="text-sm font-semibold text-white">Keep an offline app copy</div>
@@ -2744,9 +2757,9 @@ export default function App() {
                       </div>
 
                       <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
-                        <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
+                        <h3 className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
                           Audio
-                        </div>
+                        </h3>
                         <div className="space-y-2 p-3">
                           {(videoDetails?.audioFormats || []).slice(0, 6).map((format) => (
                             <div
@@ -2762,10 +2775,11 @@ export default function App() {
                                 </div>
                               </div>
                               <button
+                                type="button"
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
                                 aria-label={`Download audio format ${getFormatLabel(format)}`}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="min-h-[48px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {isOffline ? (
                                   'Offline'
@@ -2787,9 +2801,9 @@ export default function App() {
                       </div>
 
                       <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
-                        <div className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
+                        <h3 className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
                           Video
-                        </div>
+                        </h3>
                         <div className="space-y-2 p-3">
                           {(videoDetails?.videoFormats || []).slice(0, 8).map((format) => (
                             <div
@@ -2805,10 +2819,11 @@ export default function App() {
                                 </div>
                               </div>
                               <button
+                                type="button"
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
                                 aria-label={`Download video format ${getFormatLabel(format)}`}
-                                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="min-h-[48px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {isOffline ? (
                                   'Offline'
@@ -2831,9 +2846,10 @@ export default function App() {
 
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
+                          type="button"
                           onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
                           disabled={Boolean(downloadState) || isOffline}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isOffline ? (
                             <WifiOff className="h-4 w-4" />
@@ -2845,16 +2861,17 @@ export default function App() {
                           {isOffline
                             ? 'Offline'
                             : downloadState?.key === 'quick-download'
-                            ? downloadState.phase === 'saving'
-                              ? 'Saving...'
-                              : 'Downloading...'
-                            : 'Quick Download'}
+                              ? downloadState.phase === 'saving'
+                                ? 'Saving...'
+                                : 'Downloading...'
+                              : 'Download Now'}
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => void handleSaveOfflineDownload()}
                           disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {downloadState?.key === 'offline-download' ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2873,9 +2890,10 @@ export default function App() {
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => openVideo(selectedVideo.url)}
                           disabled={isOffline}
-                          className="flex items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <Music className="h-4 w-4" />
                           {isOffline ? 'Offline only' : 'Open on YouTube'}
@@ -3222,7 +3240,7 @@ export default function App() {
             </span>
           </button>
         </footer>
-      </div>
+      </main>
 
       <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
     </div>
