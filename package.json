@@ -13,6 +13,7 @@
     "desktop:dev": "electron electron/main.js",
     "desktop:pack": "vite build && electron-builder --dir",
     "desktop:build": "vite build && electron-builder --publish never",
+    "mobile:build": "npm run build && npx cap copy && npx cap open android",
     "tunnel:quick": "cloudflared tunnel --url http://localhost:3000",
     "tunnel:run": "cloudflared tunnel --config .cloudflared/config.yml run",
     "lint": "tsc --noEmit",
@@ -22,9 +23,12 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "electron-updater": "^6.8.3",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
     "@distube/ytdl-core": "^4.16.12",
     "@tailwindcss/postcss": "^4.2.1",
     "@tailwindcss/vite": "^4.2.1",

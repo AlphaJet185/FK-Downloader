@@ -1,10 +1,12 @@
 ﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Clipboard,
   Clock3,
+  CheckCircle2,
   Download,
   FolderOpen,
   HardDriveDownload,
@@ -14,6 +16,7 @@ import {
   MessageSquare,
   Maximize2,
   Music,
+  Info,
   Pause,
   Play,
   Radio,
@@ -104,6 +107,15 @@ interface VideoDetails {
 interface DownloadState extends DownloadProgress {
   key: string;
   label: string;
+}
+
+type ToastTone = 'success' | 'error' | 'info';
+
+interface ToastMessage {
+  id: string;
+  tone: ToastTone;
+  title: string;
+  description?: string;
 }
 
 type ResultSource = 'live' | 'offline-search';
@@ -210,7 +222,7 @@ function getFormatFileType(format: FormatOption) {
   }
 
   if (mimeSubtype === 'mp4' || mimeSubtype === 'm4a') {
-    return 'm4a';
+    return 'mp4a';
   }
 
   if (mimeSubtype === 'mpeg' || mimeSubtype === 'mp3') {
@@ -394,6 +406,7 @@ export default function App() {
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
   const [librarySort, setLibrarySort] = useState<LibrarySort>('newest');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const suggestTimeoutRef = useRef<number | null>(null);
   const suggestAbortRef = useRef<AbortController | null>(null);
@@ -657,6 +670,7 @@ export default function App() {
           }
 
           setStatus('Offline');
+          pushToast('info', 'Offline result loaded', 'Opened a saved video from your local history.');
           return;
         }
 
@@ -672,6 +686,7 @@ export default function App() {
         setResults(cachedResults);
         setResultSource('offline-search');
         setStatus('Offline');
+        pushToast('info', 'Offline search results', `${cachedResults.length} saved result${cachedResults.length === 1 ? '' : 's'} found.`);
         return;
       }
 
@@ -707,6 +722,7 @@ export default function App() {
         saveOfflineSearchResults(trimmedQuery, [directVideo]);
         await loadVideoDetails(directVideo);
         setStatus('Idle');
+        pushToast('success', 'Video loaded', 'Direct YouTube link opened successfully.');
         return;
       }
 
@@ -733,10 +749,16 @@ export default function App() {
       setResultSource('live');
       saveOfflineSearchResults(trimmedQuery, normalized);
       setStatus('Idle');
+      pushToast(
+        'info',
+        normalized.length > 0 ? 'Search complete' : 'No results found',
+        normalized.length > 0 ? `${normalized.length} video${normalized.length === 1 ? '' : 's'} loaded.` : 'Try a different keyword or paste a direct link.'
+      );
     } catch (err: any) {
       setResults([]);
       setStatus('Idle');
       setError(err?.message || 'Failed to search YouTube.');
+      pushToast('error', 'Search failed', err?.message || 'Try again in a moment.');
     } finally {
       setIsSearching(false);
     }
@@ -1098,6 +1120,7 @@ export default function App() {
   const handleChangeSaveLocation = async () => {
     if (!window.electronAPI?.isDesktop) {
       setError('Changing save location is only available in the desktop app.');
+      pushToast('info', 'Desktop only', 'Open the desktop app to change the save folder.');
       return;
     }
 
@@ -1110,9 +1133,11 @@ export default function App() {
       const nextSettings = setDownloadFolder(result.folderPath);
       setDownloadSettings(nextSettings);
       setStatus('Save location updated');
+      pushToast('success', 'Save location updated', result.folderPath);
       window.setTimeout(() => setStatus('Idle'), 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to change save location.');
+      pushToast('error', 'Could not update location', err?.message || 'Pick a different folder and try again.');
     }
   };
 
@@ -1152,14 +1177,18 @@ export default function App() {
 
       setStatus('Download ready');
       window.setTimeout(() => setStatus('Idle'), 1500);
+      return true;
     } catch (err: any) {
       if (err?.name === 'AbortError' || err?.message === DOWNLOAD_CANCELLED_MESSAGE) {
         setStatus('Idle');
-        return;
+        pushToast('info', 'Download cancelled');
+        return false;
       }
 
       setError(err?.message || 'Download failed.');
+      pushToast('error', 'Download failed', err?.message || 'Something went wrong during the transfer.');
       setStatus('Idle');
+      return false;
     } finally {
       setDownloadState(null);
       downloadAbortRef.current = null;
@@ -1173,6 +1202,7 @@ export default function App() {
   const handleDownload = async (url: string) => {
     if (isOffline) {
       setError('Downloads need an internet connection.');
+      pushToast('error', 'Download blocked', 'Connect to the internet to save this file.');
       return;
     }
 
@@ -1180,7 +1210,7 @@ export default function App() {
     const sourceUrl = videoDetails?.url || url;
     const thumbnail = videoDetails?.thumbnail || selectedVideo?.thumbnail || fallbackThumbnail(selectedVideo?.id || '');
 
-    await runDownload(
+    const finished = await runDownload(
       'quick-download',
       fastVideoFormat
         ? `Quick download ${fastVideoFormat.qualityLabel}`
@@ -1214,11 +1244,16 @@ export default function App() {
         });
       }
     );
+
+    if (finished) {
+      pushToast('success', 'Saved to library', videoDetails?.title || selectedVideo?.title || 'Your download finished.');
+    }
   };
 
   const handleFormatDownload = async (format: FormatOption) => {
     if (isOffline) {
       setError('Downloads need an internet connection.');
+      pushToast('error', 'Download blocked', 'Connect to the internet to save this format.');
       return;
     }
 
@@ -1226,7 +1261,7 @@ export default function App() {
     const typeLabel = format.hasVideo ? 'Video' : 'Audio';
     const sourceUrl = videoDetails?.url || selectedVideo?.url || format.url;
     const thumbnail = videoDetails?.thumbnail || selectedVideo?.thumbnail || fallbackThumbnail(selectedVideo?.id || '');
-    await runDownload(
+    const finished = await runDownload(
       `${typeLabel.toLowerCase()}-${format.itag}`,
       `${typeLabel} ${format.qualityLabel} (${extension})`,
       async (onProgress, signal) => {
@@ -1243,6 +1278,10 @@ export default function App() {
         });
       }
     );
+
+    if (finished) {
+      pushToast('success', 'Format saved', `${typeLabel} ${getFormatLabel(format)} added to your library.`);
+    }
   };
 
   const handleSaveOfflineDownload = async () => {
@@ -1252,11 +1291,13 @@ export default function App() {
 
     if (isOffline) {
       setError('Saving offline copies needs an internet connection.');
+      pushToast('error', 'Offline save blocked', 'Reconnect to save a browser copy.');
       return;
     }
 
     if (selectedOfflineDownload) {
       setError('This video is already saved for offline access.');
+      pushToast('info', 'Already saved', 'This video is already available offline.');
       return;
     }
 
@@ -1264,7 +1305,7 @@ export default function App() {
     const preferredFormat = videoDetails?.videoFormats?.find((format) => format.hasAudio);
     const thumbnail = videoDetails?.thumbnail || selectedVideo.thumbnail || fallbackThumbnail(selectedVideo.id);
 
-    await runDownload('offline-download', 'Saving for offline access', async (onProgress) => {
+    const finished = await runDownload('offline-download', 'Saving for offline access', async (onProgress) => {
       const bundle = preferredFormat
         ? await fetchDownloadUrl(preferredFormat.url, onProgress)
         : await fetchVideoDownload(sourceUrl, 'video', onProgress);
@@ -1292,26 +1333,31 @@ export default function App() {
       setSelectedOfflineDownload(savedDownload);
     });
 
-    setStatus('Saved offline');
-    window.setTimeout(() => setStatus('Idle'), 1500);
+    if (finished) {
+      setStatus('Saved offline');
+      pushToast('success', 'Offline copy ready', 'You can now open this video in the browser without internet.');
+      window.setTimeout(() => setStatus('Idle'), 1500);
+    }
   };
 
   const handleLinkDownload = async (input: string = query) => {
     if (isOffline) {
       setError('Downloads need an internet connection.');
+      pushToast('error', 'Download blocked', 'Reconnect before downloading a pasted link.');
       return;
     }
 
     const videoId = extractYouTubeVideoId(input.trim());
     if (!videoId) {
       setError('Paste a valid YouTube video link first.');
+      pushToast('info', 'Need a link', 'Paste a YouTube URL to start a direct download.');
       return;
     }
 
     const directUrl = `https://www.youtube.com/watch?v=${videoId}`;
     setShowSuggestions(false);
 
-    await runDownload('link-download', 'Download from pasted link', async (onProgress, signal) => {
+    const finished = await runDownload('link-download', 'Download from pasted link', async (onProgress, signal) => {
       const bundle = await fetchVideoDownload(directUrl, 'video', onProgress, { signal });
       await persistSavedDownload(bundle, {
         sourceId: videoId,
@@ -1324,6 +1370,10 @@ export default function App() {
         mimeType: bundle.blob.type || 'video/mp4'
       });
     });
+
+    if (finished) {
+      pushToast('success', 'Link saved', 'The pasted video link has been added to your library.');
+    }
   };
 
   const handlePasteClipboard = async () => {
@@ -1332,6 +1382,7 @@ export default function App() {
 
       if (!clipboardText) {
         setError('Clipboard is empty.');
+        pushToast('info', 'Clipboard empty', 'Copy a link first, then try pasting again.');
         return;
       }
 
@@ -1339,9 +1390,11 @@ export default function App() {
       setQuery(clipboardText);
       setShowSuggestions(!looksLikeUrl(clipboardText));
       setStatus('Clipboard ready');
+      pushToast('success', 'Pasted from clipboard', 'Your link was inserted into the search bar.');
       void handleSearch(clipboardText);
     } catch {
       setError('Clipboard access was blocked. Paste the link manually if needed.');
+      pushToast('error', 'Clipboard blocked', 'Paste the link manually and try again.');
     }
   };
 
@@ -1596,9 +1649,11 @@ export default function App() {
       setSelectedSavedDownload(null);
       setSavedPlaybackUrl('');
       setStatus('File deleted');
+      pushToast('success', 'File deleted', selectedSavedDownload.title);
       window.setTimeout(() => setStatus('Idle'), 1500);
     } catch (err: any) {
       setError(err?.message || 'Failed to delete file.');
+      pushToast('error', 'Delete failed', err?.message || 'The file could not be removed.');
     }
   };
 
@@ -1710,6 +1765,18 @@ export default function App() {
     }, 80);
   };
 
+  const pushToast = (tone: ToastTone, title: string, description?: string) => {
+    const id = crypto.randomUUID();
+    setToasts((current) => [...current, { id, tone, title, description }]);
+    window.setTimeout(() => {
+      setToasts((current) => current.filter((toast) => toast.id !== id));
+    }, 4200);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  };
+
   return (
     <div
       className={`min-h-screen bg-gradient-to-br from-emerald-950 via-zinc-950 to-emerald-900 text-emerald-50 p-6 transition-colors ${
@@ -1730,14 +1797,14 @@ export default function App() {
 
       <div className="relative z-10 mx-auto max-w-5xl space-y-12 lg:space-y-16">
         <div className="relative pt-2">
-          <div className="absolute right-0 top-0 z-20">
+          <div className="mb-4 flex justify-end sm:mb-5">
             <button
               type="button"
               onClick={() => {
                 setShowSuggestions(false);
                 setActiveView('settings');
               }}
-              className="inline-flex items-center gap-2 rounded-2xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/30"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 shadow-lg shadow-black/20 transition-colors hover:bg-emerald-900/30 sm:w-auto"
             >
               <Settings className="h-4 w-4" />
               Settings
@@ -1798,6 +1865,61 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {activeView === 'home' && (
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <Info className="h-4 w-4" />
+                How it works
+              </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Paste a link or search</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Drop in a YouTube URL or type a keyword to find the video.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Choose a format</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Pick a resolution like 360p or 1080p, or choose an audio format like MP3 or MP4A.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 3</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Save or play offline</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Download to your device, keep a browser copy, or open the preview full screen.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <aside className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <Clock3 className="h-4 w-4" />
+                About FK Downloader
+              </div>
+              <p className="mt-3 text-sm leading-6 text-emerald-100/70">
+                FK Downloader is a compact video utility for quick search, preview, saving, and offline playback.
+                It is designed to feel fast on desktop and touch-friendly on mobile.
+              </p>
+              <div className="mt-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">
+                  Supported platforms
+                </div>
+                <ul className="mt-3 space-y-2 text-sm text-emerald-100/70">
+                  <li>Modern desktop browsers with video playback</li>
+                  <li>Desktop app mode with local file saving</li>
+                  <li>Offline browser copies for saved videos</li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+        )}
 
         {activeView === 'settings' ? (
           <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-7">
@@ -1921,6 +2043,7 @@ export default function App() {
                       }
                     }}
                     placeholder="Paste YouTube URL or search for a video..."
+                    aria-label="Search videos or paste a YouTube URL"
                     className="w-full rounded-2xl border border-emerald-700/35 bg-zinc-950/75 px-4 py-3.5 pl-12 text-sm text-emerald-100 placeholder-emerald-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
                   />
                   <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
@@ -1946,7 +2069,8 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => void handlePasteClipboard()}
-                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 xl:min-w-[120px]"
+                  aria-label="Paste a link from the clipboard"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 sm:w-auto xl:min-w-[120px]"
                 >
                   <Clipboard className="h-5 w-5" />
                   Paste
@@ -1955,7 +2079,8 @@ export default function App() {
                 <button
                   onClick={() => void handleSearch()}
                   disabled={isSearching}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 xl:min-w-[120px]"
+                  aria-label="Search videos"
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 sm:w-auto xl:min-w-[120px]"
                 >
                   {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
                 </button>
@@ -1964,7 +2089,8 @@ export default function App() {
                   <button
                     onClick={() => void handleLinkDownload()}
                     disabled={Boolean(downloadState) || isOffline}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 xl:min-w-[150px]"
+                    aria-label="Download the pasted YouTube link"
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto xl:min-w-[150px]"
                   >
                     {downloadState?.key === 'link-download' ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -2587,6 +2713,7 @@ export default function App() {
                             type="button"
                             onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
                             disabled={Boolean(downloadState) || isOffline}
+                            aria-label="Save the best portable version"
                             className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-400/10 px-4 py-3 text-left transition-colors hover:bg-emerald-400/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
@@ -2602,6 +2729,7 @@ export default function App() {
                             type="button"
                             onClick={() => void handleSaveOfflineDownload()}
                             disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
+                            aria-label="Keep an offline app copy"
                             className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             <div>
@@ -2636,6 +2764,7 @@ export default function App() {
                               <button
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
+                                aria-label={`Download audio format ${getFormatLabel(format)}`}
                                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {isOffline ? (
@@ -2678,6 +2807,7 @@ export default function App() {
                               <button
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
+                                aria-label={`Download video format ${getFormatLabel(format)}`}
                                 className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 {isOffline ? (
@@ -2984,7 +3114,103 @@ export default function App() {
           </div>
         )}
 
-        <div className="flex justify-center border-t border-emerald-900/30 pt-12 pb-6">
+        <div
+          className="pointer-events-none fixed right-4 top-4 z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-3 sm:right-6 sm:top-6"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {toasts.map((toast) => {
+            const toneStyles =
+              toast.tone === 'success'
+                ? 'border-emerald-500/35 bg-emerald-950/90 text-emerald-100'
+                : toast.tone === 'error'
+                  ? 'border-red-500/35 bg-red-950/90 text-red-100'
+                  : 'border-sky-500/35 bg-sky-950/90 text-sky-100';
+            const toneIcon =
+              toast.tone === 'success' ? (
+                <CheckCircle2 className="h-4 w-4 text-emerald-300" />
+              ) : toast.tone === 'error' ? (
+                <AlertTriangle className="h-4 w-4 text-red-300" />
+              ) : (
+                <Info className="h-4 w-4 text-sky-300" />
+              );
+
+            return (
+              <div
+                key={toast.id}
+                className={`pointer-events-auto rounded-2xl border px-4 py-3 shadow-[0_20px_45px_rgba(0,0,0,0.35)] backdrop-blur ${toneStyles}`}
+              >
+                <div className="flex items-start gap-3">
+                  {toneIcon}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold">{toast.title}</div>
+                    {toast.description ? <div className="mt-1 text-xs leading-5 opacity-80">{toast.description}</div> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => dismissToast(toast.id)}
+                    className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs font-semibold text-white/75 transition-colors hover:bg-white/10"
+                    aria-label={`Dismiss ${toast.title}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <footer className="space-y-6 border-t border-emerald-900/30 pt-10 pb-6">
+          <div className="flex flex-col gap-4 rounded-[1.5rem] border border-emerald-800/25 bg-zinc-900/45 p-5 text-sm text-emerald-100/70 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold text-emerald-100">Need help or want to read the fine print?</div>
+              <p className="mt-1 max-w-2xl leading-6">
+                FK Downloader is built for personal use. Respect content rights, keep your downloads local, and
+                verify that you have permission to save media where needed.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs font-semibold">
+              <a
+                href="#privacy"
+                className="rounded-full border border-emerald-700/35 bg-black/20 px-3 py-1.5 text-emerald-200 transition-colors hover:bg-black/35"
+              >
+                Privacy Policy
+              </a>
+              <a
+                href="#terms"
+                className="rounded-full border border-emerald-700/35 bg-black/20 px-3 py-1.5 text-emerald-200 transition-colors hover:bg-black/35"
+              >
+                Terms of Service
+              </a>
+              <a
+                href="https://github.com/AlphaJet185/FK-Downloader/issues"
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-emerald-700/35 bg-black/20 px-3 py-1.5 text-emerald-200 transition-colors hover:bg-black/35"
+              >
+                Contact / Support
+              </a>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <section id="privacy" className="rounded-[1.5rem] border border-emerald-800/25 bg-black/20 p-5">
+              <div className="text-sm font-semibold text-emerald-100">Privacy Policy</div>
+              <p className="mt-2 text-sm leading-6 text-emerald-100/65">
+                Search terms, saved downloads, and offline metadata may be stored locally in your browser or app to
+                make the downloader faster and keep your library available.
+              </p>
+            </section>
+
+            <section id="terms" className="rounded-[1.5rem] border border-emerald-800/25 bg-black/20 p-5">
+              <div className="text-sm font-semibold text-emerald-100">Terms of Service</div>
+              <p className="mt-2 text-sm leading-6 text-emerald-100/65">
+                Use the tool responsibly and only for content you have rights or permission to save. Availability of
+                formats depends on the source video and connection quality.
+              </p>
+            </section>
+          </div>
+
           <button
             onClick={() => setIsFeedbackOpen(true)}
             className="group fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-indigo-500 p-3 text-white shadow-lg transition-all hover:-translate-y-1 hover:bg-indigo-600 hover:shadow-indigo-500/25"
@@ -2995,7 +3221,7 @@ export default function App() {
               Feedback
             </span>
           </button>
-        </div>
+        </footer>
       </div>
 
       <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
