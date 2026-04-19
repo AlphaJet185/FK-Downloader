@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ChevronLeft,
@@ -12,7 +12,7 @@ import {
   LayoutGrid,
   Loader2,
   MessageSquare,
-  Mic,
+  Maximize2,
   Music,
   Pause,
   Play,
@@ -112,7 +112,7 @@ type LibraryFilter = 'all' | 'saved' | 'offline';
 type LibrarySort = 'newest' | 'size' | 'title';
 
 const OFFLINE_MODE_MESSAGE =
-  'Recent searches and opened videos stay available. Recognition, preview, downloads, and YouTube links come back when you reconnect.';
+  'Recent searches and opened videos stay available. Preview, downloads, and YouTube links come back when you reconnect.';
 
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
@@ -200,6 +200,32 @@ function getQualityRank(label: string) {
   if (normalized.includes('medium')) return 480;
   if (normalized.includes('low')) return 360;
   return 0;
+}
+
+function getFormatFileType(format: FormatOption) {
+  const mimeSubtype = format.mimeType?.split('/')[1]?.split(';')[0]?.trim().toLowerCase();
+
+  if (!mimeSubtype) {
+    return '';
+  }
+
+  if (mimeSubtype === 'mp4' || mimeSubtype === 'm4a') {
+    return 'm4a';
+  }
+
+  if (mimeSubtype === 'mpeg' || mimeSubtype === 'mp3') {
+    return 'mp3';
+  }
+
+  return mimeSubtype;
+}
+
+function getFormatLabel(format: FormatOption) {
+  if (format.hasVideo) {
+    return format.qualityLabel || getFormatFileType(format) || 'video';
+  }
+
+  return getFormatFileType(format).toUpperCase() || 'AUDIO';
 }
 
 function clampPlaybackTime(nextTime: number, duration: number) {
@@ -378,6 +404,8 @@ export default function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const savedPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewPanelRef = useRef<HTMLDivElement | null>(null);
+  const savedPreviewPanelRef = useRef<HTMLDivElement | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
@@ -981,6 +1009,23 @@ export default function App() {
     }
 
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const toggleFullscreen = async (target: HTMLElement | null) => {
+    if (!target) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await target.requestFullscreen();
+    } catch {
+      setError('Fullscreen is not available in this browser.');
+    }
   };
 
   const ensureDownloadFolder = async () => {
@@ -1683,8 +1728,8 @@ export default function App() {
         </div>
       )}
 
-      <div className="relative z-10 mx-auto max-w-6xl space-y-8">
-        <div className="relative">
+      <div className="relative z-10 mx-auto max-w-5xl space-y-12 lg:space-y-16">
+        <div className="relative pt-2">
           <div className="absolute right-0 top-0 z-20">
             <button
               type="button"
@@ -1699,38 +1744,53 @@ export default function App() {
             </button>
           </div>
 
-          <div className="rounded-[1.5rem] border border-emerald-800/40 bg-zinc-900/55 p-4 shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div className="min-w-0">
-                <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
-                  <Download className="h-6 w-6 text-emerald-300" />
-                  FK Downloader
-                </h1>
-                <p className="mt-1 text-sm text-emerald-100/65">
-                  Search, preview, download, and keep offline copies in one compact workspace.
-                </p>
+          <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-5 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-7 sm:py-8">
+            <div className="mx-auto max-w-3xl text-center">
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                <Download className="h-3.5 w-3.5" />
+                Video downloader
               </div>
-
-              <div className="flex flex-wrap gap-2 text-xs font-medium">
+              <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
+                FK Downloader
+              </h1>
+              <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-emerald-100/70 sm:text-base">
+                Paste a YouTube link or search keywords, then pick the format you want. Fast conversion, simple flow,
+                and your saved items stay close by.
+              </p>
+              <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-semibold">
+                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                  MP4
+                </span>
+                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                  MP3
+                </span>
+                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                  Fast search
+                </span>
+                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                  Offline saves
+                </span>
+              </div>
+              <div className="mt-6 grid gap-3 text-xs font-medium sm:grid-cols-4">
                 <div
-                  className={`flex items-center gap-2 rounded-full border px-3 py-1.5 ${
+                  className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 ${
                     isOffline
-                      ? 'border-red-500/40 bg-red-900/20 text-red-300'
-                      : 'border-emerald-500/40 bg-emerald-900/20 text-emerald-300'
+                      ? 'border-red-500/30 bg-red-950/15 text-red-300'
+                      : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
                   }`}
                 >
                   {isOffline ? <WifiOff className="h-3.5 w-3.5" /> : <Wifi className="h-3.5 w-3.5" />}
                   {isOffline ? 'Offline' : 'Online'}
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
                   <Radio className="h-3.5 w-3.5 text-emerald-300" />
                   {status}
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
                   <FolderOpen className="h-3.5 w-3.5 text-emerald-300" />
                   {savedDownloads.length} saved
                 </div>
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-emerald-100/80">
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
                   <WifiOff className="h-3.5 w-3.5 text-emerald-300" />
                   {offlineDownloads.length} offline
                 </div>
@@ -1740,7 +1800,7 @@ export default function App() {
         </div>
 
         {activeView === 'settings' ? (
-          <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-6">
+          <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-7">
             <div className="flex flex-col gap-4 border-b border-emerald-800/30 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <button
@@ -1761,29 +1821,29 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+            <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">
                   {downloadSettings.folderPath ? 'Configured' : 'Ask first'}
                 </div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Saved files</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{savedDownloads.length}</div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-[1.3fr_0.9fr]">
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+            <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-6">
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <FolderOpen className="h-4 w-4" />
                   Save location
@@ -1801,7 +1861,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-6">
                 <div className="text-sm font-semibold text-emerald-200">App actions</div>
                 <div className="mt-4 flex flex-col gap-3">
                   <button
@@ -1834,9 +1894,9 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="relative z-10 overflow-hidden rounded-[1.25rem] border border-emerald-800/40 bg-zinc-900/60 p-4 shadow-[0_18px_45px_rgba(0,0,0,0.22)] backdrop-blur">
-              <div className="flex flex-col gap-3 xl:flex-row">
+          <div className="space-y-8">
+            <div className="relative z-10 overflow-hidden rounded-[1.5rem] border border-emerald-800/35 bg-zinc-900/55 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.2)] backdrop-blur-sm sm:p-6">
+              <div className="mx-auto flex max-w-4xl flex-col gap-4 xl:flex-row">
                 <div className="relative flex-1">
                   <input
                     ref={searchInputRef}
@@ -1861,12 +1921,12 @@ export default function App() {
                       }
                     }}
                     placeholder="Paste YouTube URL or search for a video..."
-                    className="w-full rounded-xl border border-emerald-800/50 bg-zinc-950/80 px-4 py-3 pl-12 text-sm text-emerald-100 placeholder-emerald-700 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
+                    className="w-full rounded-2xl border border-emerald-700/35 bg-zinc-950/75 px-4 py-3.5 pl-12 text-sm text-emerald-100 placeholder-emerald-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
                   />
                   <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
 
                   {showSuggestions && suggestions.length > 0 && (
-                    <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-emerald-800/50 bg-zinc-900 shadow-2xl">
+                    <ul className="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-emerald-800/40 bg-zinc-900/98 shadow-2xl">
                       {suggestions.map((suggestion, index) => (
                         <li
                           key={`${suggestion}-${index}`}
@@ -1886,7 +1946,7 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => void handlePasteClipboard()}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10"
+                  className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 xl:min-w-[120px]"
                 >
                   <Clipboard className="h-5 w-5" />
                   Paste
@@ -1895,7 +1955,7 @@ export default function App() {
                 <button
                   onClick={() => void handleSearch()}
                   disabled={isSearching}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 xl:min-w-[120px]"
                 >
                   {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
                 </button>
@@ -1904,7 +1964,7 @@ export default function App() {
                   <button
                     onClick={() => void handleLinkDownload()}
                     disabled={Boolean(downloadState) || isOffline}
-                    className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 xl:min-w-[150px]"
                   >
                     {downloadState?.key === 'link-download' ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -1923,41 +1983,18 @@ export default function App() {
                   </button>
                 )}
 
-                <button
-                  onClick={() => void handleRecognize()}
-                  disabled={isRecognizing || isOffline}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-950/70 px-5 py-3 font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-                  {isOffline ? 'Needs internet' : isRecognizing ? 'Listening...' : 'Recognize'}
-                </button>
               </div>
             </div>
           </div>
         )}
 
         {isOffline && (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-4 py-4 text-left">
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-5 py-4 text-left">
             <div className="flex items-center gap-2 text-sm font-semibold text-amber-200">
               <WifiOff className="h-4 w-4" />
               Offline mode is active
             </div>
             <p className="mt-1 text-sm text-amber-100/80">{OFFLINE_MODE_MESSAGE}</p>
-          </div>
-        )}
-
-        {recognition && (
-          <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-300">
-              <Music className="h-4 w-4" />
-              Recognized with Audd
-            </div>
-            <div className="text-emerald-100">{recognition.artist} - {recognition.title}</div>
-            {(recognition.album || recognition.releaseDate) && (
-              <div className="mt-1 text-sm text-emerald-500">
-                {[recognition.album, recognition.releaseDate].filter(Boolean).join(' • ')}
-              </div>
-            )}
           </div>
         )}
 
@@ -1968,7 +2005,7 @@ export default function App() {
         )}
 
         {downloadState && (
-          <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-4">
+          <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -2026,7 +2063,7 @@ export default function App() {
         )}
 
         {!selectedVideo && (showingOfflineLibrary || showingOfflineSearchResults) && (
-          <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
+          <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-5 py-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
               <WifiOff className="h-4 w-4" />
               {showingOfflineLibrary ? 'Recent cached videos' : 'Offline search results'}
@@ -2040,8 +2077,8 @@ export default function App() {
         )}
 
         {!selectedVideo && (savedDownloads.length > 0 || offlineDownloads.length > 0) && (
-          <div className="rounded-[1.25rem] border border-emerald-800/30 bg-zinc-900/55 p-4 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="rounded-[1.25rem] border border-emerald-800/30 bg-zinc-900/55 p-5 shadow-[0_12px_30px_rgba(0,0,0,0.16)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <LayoutGrid className="h-4 w-4" />
@@ -2066,7 +2103,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap gap-2 text-xs font-semibold">
                 <button
                   type="button"
@@ -2140,7 +2177,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2 text-xs text-emerald-100/65">
+            <div className="mt-4 flex flex-wrap gap-2 text-xs text-emerald-100/65">
               <div>{visibleSavedDownloads.length} saved files</div>
               <div>{visibleOfflineDownloads.length} offline copies</div>
               <div>{offlineLibrary.length} cached history items</div>
@@ -2149,19 +2186,8 @@ export default function App() {
         )}
 
         {shouldShowOfflineSection && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                <WifiOff className="h-4 w-4" />
-                Offline Downloads
-              </div>
-              <p className="mt-1 text-sm text-emerald-500">
-                These full videos are saved in the browser, so they stay available inside the site even without an
-                internet connection.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {visibleOfflineDownloads.map((download) => (
                 <button
                   type="button"
@@ -2190,7 +2216,7 @@ export default function App() {
                     </h3>
                     <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
                     <div className="mt-auto text-xs font-medium text-emerald-500/70">
-                      {formatBytes(download.sizeBytes)} saved in browser • {formatRelativeTime(download.savedAt)}
+                      {formatBytes(download.sizeBytes)} saved in browser â€¢ {formatRelativeTime(download.savedAt)}
                     </div>
                   </div>
                 </button>
@@ -2205,8 +2231,8 @@ export default function App() {
         )}
 
         {shouldShowSavedSection && (
-          <div ref={savedFilesSectionRef} className="space-y-4">
-            <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-4 py-4">
+          <div ref={savedFilesSectionRef} className="space-y-6">
+            <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-5 py-4">
               <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                 <FolderOpen className="h-4 w-4" />
                 Saved in app
@@ -2216,7 +2242,7 @@ export default function App() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               {visibleSavedDownloads.map((download) => (
                 <button
                   type="button"
@@ -2247,7 +2273,7 @@ export default function App() {
                     </h3>
                     <p className="mb-2 flex-1 text-sm text-emerald-600/80">{download.channel}</p>
                     <div className="mt-auto text-xs font-medium text-emerald-500/70">
-                      {formatBytes(download.sizeBytes)} • {download.fileName} • {formatRelativeTime(download.savedAt)}
+                      {formatBytes(download.sizeBytes)} â€¢ {download.fileName} â€¢ {formatRelativeTime(download.savedAt)}
                     </div>
                   </div>
                 </button>
@@ -2263,7 +2289,7 @@ export default function App() {
 
         {selectedSavedDownload && (
           <div className="flex flex-col overflow-hidden rounded-2xl border border-emerald-800/30 bg-zinc-900/50 md:flex-row">
-            <div className="flex-1 border-b border-emerald-800/30 p-6 md:border-b-0 md:border-r">
+            <div className="flex-1 border-b border-emerald-800/30 p-7 md:border-b-0 md:border-r">
               <div className="mb-4 flex items-center gap-2 font-semibold text-emerald-300">
                 <FolderOpen className="h-4 w-4" />
                 Saved File
@@ -2306,9 +2332,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
+            <div className="w-full bg-zinc-950/50 p-7 text-center md:w-80">
               {savedPlaybackUrl ? (
-                <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                <div ref={savedPreviewPanelRef} className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                   <div className="relative">
                     <video
                       ref={savedPreviewVideoRef}
@@ -2400,6 +2426,14 @@ export default function App() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => void toggleFullscreen(savedPreviewPanelRef.current)}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                        aria-label="Fullscreen saved preview"
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={handleNextSavedDownload}
                         disabled={!nextSavedDownload}
                         className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
@@ -2453,7 +2487,7 @@ export default function App() {
         )}
 
         {selectedVideo ? (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <button
               onClick={() => setSelectedVideo(null)}
               className="flex items-center gap-2 font-medium text-emerald-400 transition-colors hover:text-emerald-300"
@@ -2527,12 +2561,10 @@ export default function App() {
                               Best audio
                             </div>
                             <div className="mt-2 text-lg font-semibold text-white">
-                              {recommendedAudioFormat?.qualityLabel || 'Waiting for formats'}
+                              {recommendedAudioFormat ? getFormatLabel(recommendedAudioFormat) : 'Waiting for formats'}
                             </div>
                             <div className="mt-1 text-sm text-emerald-100/60">
-                              {recommendedAudioFormat?.bitrate
-                                ? `${Math.round(recommendedAudioFormat.bitrate)} kbps`
-                                : recommendedAudioFormat?.contentLength || 'Size unknown'}
+                              {recommendedAudioFormat?.contentLength || 'Size unknown'}
                             </div>
                           </div>
 
@@ -2595,10 +2627,10 @@ export default function App() {
                             >
                               <div>
                                 <div className="text-sm font-semibold text-emerald-100">
-                                  {format.qualityLabel} {format.mimeType ? `(${format.mimeType.split('/')[1]})` : ''}
+                                  {getFormatLabel(format)}
                                 </div>
                                 <div className="text-xs text-emerald-500">
-                                  {format.contentLength} {format.bitrate ? `• ${Math.round(format.bitrate)} kbps` : ''}
+                                  {format.contentLength}
                                 </div>
                               </div>
                               <button
@@ -2637,10 +2669,10 @@ export default function App() {
                             >
                               <div>
                                 <div className="text-sm font-semibold text-emerald-100">
-                                  {format.qualityLabel} {format.mimeType ? `(${format.mimeType.split('/')[1]})` : ''}
+                                  {getFormatLabel(format)}
                                 </div>
                                 <div className="text-xs text-emerald-500">
-                                  {format.contentLength} {format.hasAudio ? '• with audio' : '• video only'}
+                                  {format.contentLength}
                                 </div>
                               </div>
                               <button
@@ -2732,7 +2764,7 @@ export default function App() {
 
               <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
                 {previewSourceUrl ? (
-                  <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                  <div ref={previewPanelRef} className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                     <div className="relative">
                       <video
                         ref={previewVideoRef}
@@ -2828,26 +2860,23 @@ export default function App() {
                         >
                           <SkipForward className="h-4 w-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={handleNextVideo}
-                          disabled={!nextVideo}
-                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                      {!isOffline && (
-                        <button
-                          type="button"
-                          onClick={() => void handleRecognizeCurrentVideo()}
-                          disabled={isRecognizing || !previewSourceUrl}
-                          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-emerald-950/30 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {isRecognizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
-                          Recognize from this point
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={handleNextVideo}
+                        disabled={!nextVideo}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void toggleFullscreen(previewPanelRef.current)}
+                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                        aria-label="Fullscreen preview"
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
+                    </div>
                     </div>
                   </div>
                 ) : (
@@ -2973,3 +3002,5 @@ export default function App() {
     </div>
   );
 }
+
+
