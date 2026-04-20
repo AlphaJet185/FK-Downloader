@@ -1881,38 +1881,85 @@ export default function App() {
                     </span>
                   </figcaption>
                   <div className="grid gap-4 p-4 lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
-                    <img
-                      src="/og-image.png"
-                      alt="Example interface of FK Downloader"
-                      className="min-h-[320px] w-full rounded-2xl border border-emerald-800/25 object-cover shadow-lg sm:min-h-[380px]"
-                    />
-                    <div className="grid gap-3">
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                          <Download className="h-4 w-4" />
-                          Primary action
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          Paste a link, search, then hit the main download button.
-                        </p>
+                    <div className="min-h-[340px] rounded-2xl border border-emerald-800/25 bg-gradient-to-br from-black/85 via-emerald-950/70 to-zinc-950 p-4 shadow-lg sm:min-h-[400px]">
+                      <div className="flex items-center justify-between border-b border-emerald-800/20 pb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
+                        <span>Example interface</span>
+                        <span className="rounded-full border border-emerald-700/30 bg-emerald-950/40 px-2 py-1">
+                          Demo
+                        </span>
                       </div>
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                          <Maximize2 className="h-4 w-4" />
-                          Fullscreen preview
+                      <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+                        <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-4">
+                          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/35 bg-emerald-950/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+                            <Download className="h-3.5 w-3.5" />
+                            Search and download
+                          </div>
+                          <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-zinc-950/80 p-4">
+                            <div className="h-3 w-24 rounded-full bg-emerald-500/30" />
+                            <div className="mt-3 h-10 rounded-xl border border-emerald-700/30 bg-black/40 px-3 py-2 text-xs text-emerald-100/55">
+                              Paste a YouTube URL or search a video...
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                                MP4
+                              </span>
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                                MP3
+                              </span>
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                                360p
+                              </span>
+                            </div>
+                            <div className="mt-4 flex gap-2">
+                              <div className="h-10 flex-1 rounded-xl bg-emerald-500" />
+                              <div className="h-10 flex-1 rounded-xl border border-emerald-700/30 bg-white/5" />
+                            </div>
+                          </div>
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-3">
+                              <div className="text-xs font-semibold text-emerald-200">Primary action</div>
+                              <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
+                                Bright, centered, and easy to tap.
+                              </p>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-3">
+                              <div className="text-xs font-semibold text-emerald-200">Format choices</div>
+                              <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
+                                Pick video or audio formats before saving.
+                              </p>
+                            </div>
+                          </div>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          Open the preview full screen when you want a closer look.
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                          <Info className="h-4 w-4" />
-                          Format choices
+
+                        <div className="grid gap-3">
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Maximize2 className="h-4 w-4" />
+                              Fullscreen preview
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                              Open the preview full screen when you want a closer look.
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Info className="h-4 w-4" />
+                              Why this helps
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                              A real example gives new visitors an immediate sense of how the tool works.
+                            </p>
+                          </div>
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                              <Sparkles className="h-4 w-4" />
+                              Quick benefits
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                              Fast search, clear formats, and visible controls right on the page.
+                            </p>
+                          </div>
                         </div>
-                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          Choose MP4 for video or MP3 for audio, then save locally.
-                        </p>
                       </div>
                     </div>
                   </div>
