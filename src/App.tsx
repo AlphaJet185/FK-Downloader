@@ -1812,57 +1812,101 @@ export default function App() {
           </div>
 
           <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-5 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-7 sm:py-8">
-            <div className="mx-auto max-w-3xl text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
-                <Download className="h-3.5 w-3.5" />
-                Video downloader
+            <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+              <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                  <Download className="h-3.5 w-3.5" />
+                  Video downloader
+                </div>
+                <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
+                  Download High-Quality Videos Instantly
+                </h1>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
+                  FK Downloader
+                </p>
+                <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-emerald-100/70 sm:text-base lg:mx-0">
+                  Paste a YouTube link or search keywords, then pick the format you want. Fast conversion, simple
+                  flow, and your saved items stay close by.
+                </p>
+                <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-semibold lg:justify-start">
+                  <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                    MP4
+                  </span>
+                  <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                    MP3
+                  </span>
+                  <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                    Fast search
+                  </span>
+                  <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
+                    Offline saves
+                  </span>
+                </div>
+                <div className="mt-6 grid gap-3 text-xs font-medium sm:grid-cols-4">
+                  <div
+                    className={`flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 ${
+                      isOffline
+                        ? 'border-red-500/30 bg-red-950/15 text-red-300'
+                        : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
+                    }`}
+                  >
+                    {isOffline ? <WifiOff className="h-3.5 w-3.5" /> : <Wifi className="h-3.5 w-3.5" />}
+                    {isOffline ? 'Offline' : 'Online'}
+                  </div>
+                  <div className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
+                    <Radio className="h-3.5 w-3.5 text-emerald-300" />
+                    {status}
+                  </div>
+                  <div className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
+                    <FolderOpen className="h-3.5 w-3.5 text-emerald-300" />
+                    {savedDownloads.length} saved
+                  </div>
+                  <div className="flex min-h-[48px] items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
+                    <WifiOff className="h-3.5 w-3.5 text-emerald-300" />
+                    {offlineDownloads.length} offline
+                  </div>
+                </div>
               </div>
-              <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
-                Download Videos and Audio Instantly
-              </h1>
-              <p className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
-                FK Downloader
-              </p>
-              <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-emerald-100/70 sm:text-base">
-                Paste a YouTube link or search keywords, then pick the format you want. Fast conversion, simple flow,
-                and your saved items stay close by.
-              </p>
-              <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs font-semibold">
-                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
-                  MP4
-                </span>
-                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
-                  MP3
-                </span>
-                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
-                  Fast search
-                </span>
-                <span className="rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1.5 text-emerald-200">
-                  Offline saves
-                </span>
-              </div>
-              <div className="mt-6 grid gap-3 text-xs font-medium sm:grid-cols-4">
-                <div
-                  className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-2.5 ${
-                    isOffline
-                      ? 'border-red-500/30 bg-red-950/15 text-red-300'
-                      : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
-                  }`}
-                >
-                  {isOffline ? <WifiOff className="h-3.5 w-3.5" /> : <Wifi className="h-3.5 w-3.5" />}
-                  {isOffline ? 'Offline' : 'Online'}
-                </div>
-                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
-                  <Radio className="h-3.5 w-3.5 text-emerald-300" />
-                  {status}
-                </div>
-                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
-                  <FolderOpen className="h-3.5 w-3.5 text-emerald-300" />
-                  {savedDownloads.length} saved
-                </div>
-                <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-emerald-100/80">
-                  <WifiOff className="h-3.5 w-3.5 text-emerald-300" />
-                  {offlineDownloads.length} offline
+
+              <div className="relative">
+                <div className="absolute -inset-4 rounded-[2rem] bg-emerald-500/10 blur-3xl" aria-hidden="true" />
+                <div className="relative overflow-hidden rounded-[1.75rem] border border-emerald-700/30 bg-zinc-950/80 shadow-[0_25px_70px_rgba(0,0,0,0.45)]">
+                  <div className="flex items-center justify-between border-b border-emerald-800/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Live preview
+                    </span>
+                    <span className="rounded-full border border-emerald-700/30 bg-emerald-950/40 px-2 py-1 text-[10px]">
+                      Touch friendly
+                    </span>
+                  </div>
+                  <div className="grid gap-4 p-4">
+                    <img
+                      src="/og-image.png"
+                      alt="FK Downloader preview card"
+                      className="aspect-[1200/630] w-full rounded-2xl border border-emerald-800/25 object-cover shadow-lg"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                          <Download className="h-4 w-4" />
+                          One-click download
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                          Keep the main action easy to spot and easy to tap.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                          <Maximize2 className="h-4 w-4" />
+                          Fullscreen preview
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                          Open videos full screen when you want a closer look.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1915,13 +1959,42 @@ export default function App() {
                   Supported platforms
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm text-emerald-100/70">
-                  <li>Modern desktop browsers with video playback</li>
+                  <li>YouTube links and pasted URLs</li>
                   <li>Desktop app mode with local file saving</li>
                   <li>Offline browser copies for saved videos</li>
                 </ul>
               </div>
             </aside>
           </div>
+        )}
+
+        {activeView === 'home' && (
+          <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <MessageSquare className="h-4 w-4" />
+              FAQ
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">What do I paste here?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Paste a YouTube URL or search with keywords to find the video you want.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Can I keep it offline?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Yes. Save a local copy or keep a browser copy for offline access later.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Is it mobile-friendly?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  The main search field and download buttons are sized for thumbs and touch input.
+                </p>
+              </div>
+            </div>
+          </section>
         )}
 
         {activeView === 'settings' ? (
