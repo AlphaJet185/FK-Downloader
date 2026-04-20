@@ -1868,7 +1868,7 @@ export default function App() {
                 </div>
               </div>
 
-              <figure className="relative mx-auto w-full max-w-4xl">
+              <figure className="relative mx-auto w-full max-w-[1200px]">
                 <div className="absolute -inset-4 rounded-[2rem] bg-emerald-500/10 blur-3xl" aria-hidden="true" />
                 <div className="relative overflow-hidden rounded-[1.75rem] border border-emerald-700/30 bg-zinc-950/80 shadow-[0_25px_70px_rgba(0,0,0,0.45)]">
                   <figcaption className="flex items-center justify-between border-b border-emerald-800/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
@@ -1880,49 +1880,49 @@ export default function App() {
                       What users see
                     </span>
                   </figcaption>
-                  <div className="grid gap-4 p-4 lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
-                    <div className="min-h-[340px] rounded-2xl border border-emerald-800/25 bg-gradient-to-br from-black/85 via-emerald-950/70 to-zinc-950 p-4 shadow-lg sm:min-h-[400px]">
+                  <div className="grid gap-4 p-4 lg:grid-cols-[1.35fr_0.65fr] lg:items-stretch">
+                    <div className="min-h-[420px] rounded-2xl border border-emerald-800/25 bg-gradient-to-br from-black/85 via-emerald-950/70 to-zinc-950 p-6 shadow-lg sm:min-h-[540px]">
                       <div className="flex items-center justify-between border-b border-emerald-800/20 pb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
                         <span>Example interface</span>
                         <span className="rounded-full border border-emerald-700/30 bg-emerald-950/40 px-2 py-1">
                           Demo
                         </span>
                       </div>
-                      <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                        <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-4">
+                      <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+                        <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-5">
                           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/35 bg-emerald-950/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
                             <Download className="h-3.5 w-3.5" />
                             Search and download
                           </div>
-                          <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-zinc-950/80 p-4">
+                          <div className="mt-5 rounded-2xl border border-emerald-700/30 bg-zinc-950/80 p-5">
                             <div className="h-3 w-24 rounded-full bg-emerald-500/30" />
-                            <div className="mt-3 h-10 rounded-xl border border-emerald-700/30 bg-black/40 px-3 py-2 text-xs text-emerald-100/55">
+                            <div className="mt-4 h-12 rounded-xl border border-emerald-700/30 bg-black/40 px-4 py-3 text-sm text-emerald-100/55">
                               Paste a YouTube URL or search a video...
                             </div>
-                            <div className="mt-3 flex gap-2">
-                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
                                 MP4
                               </span>
-                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
                                 MP3
                               </span>
-                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1 text-[11px] text-emerald-200">
+                              <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
                                 360p
                               </span>
                             </div>
-                            <div className="mt-4 flex gap-2">
-                              <div className="h-10 flex-1 rounded-xl bg-emerald-500" />
-                              <div className="h-10 flex-1 rounded-xl border border-emerald-700/30 bg-white/5" />
+                            <div className="mt-5 flex gap-3">
+                              <div className="h-12 flex-1 rounded-xl bg-emerald-500" />
+                              <div className="h-12 flex-1 rounded-xl border border-emerald-700/30 bg-white/5" />
                             </div>
                           </div>
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-3">
+                          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-4">
                               <div className="text-xs font-semibold text-emerald-200">Primary action</div>
                               <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
                                 Bright, centered, and easy to tap.
                               </p>
                             </div>
-                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-3">
+                            <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-4">
                               <div className="text-xs font-semibold text-emerald-200">Format choices</div>
                               <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
                                 Pick video or audio formats before saving.
@@ -1931,8 +1931,8 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="grid gap-3">
-                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                        <div className="grid gap-4">
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-5">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Maximize2 className="h-4 w-4" />
                               Fullscreen preview
@@ -1941,7 +1941,7 @@ export default function App() {
                               Open the preview full screen when you want a closer look.
                             </p>
                           </div>
-                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-5">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Info className="h-4 w-4" />
                               Why this helps
@@ -1950,7 +1950,7 @@ export default function App() {
                               A real example gives new visitors an immediate sense of how the tool works.
                             </p>
                           </div>
-                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                          <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-5">
                             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                               <Sparkles className="h-4 w-4" />
                               Quick benefits
