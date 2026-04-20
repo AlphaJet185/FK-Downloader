@@ -1868,47 +1868,56 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="relative">
+              <figure className="relative mx-auto w-full max-w-4xl">
                 <div className="absolute -inset-4 rounded-[2rem] bg-emerald-500/10 blur-3xl" aria-hidden="true" />
                 <div className="relative overflow-hidden rounded-[1.75rem] border border-emerald-700/30 bg-zinc-950/80 shadow-[0_25px_70px_rgba(0,0,0,0.45)]">
-                  <div className="flex items-center justify-between border-b border-emerald-800/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
+                  <figcaption className="flex items-center justify-between border-b border-emerald-800/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-400">
                     <span className="flex items-center gap-2">
                       <Sparkles className="h-3.5 w-3.5" />
-                      Live preview
+                      Example interface
                     </span>
                     <span className="rounded-full border border-emerald-700/30 bg-emerald-950/40 px-2 py-1 text-[10px]">
-                      Touch friendly
+                      What users see
                     </span>
-                  </div>
-                  <div className="grid gap-4 p-4">
+                  </figcaption>
+                  <div className="grid gap-4 p-4 lg:grid-cols-[1.2fr_0.8fr] lg:items-stretch">
                     <img
                       src="/og-image.png"
-                      alt="FK Downloader preview card"
-                      className="aspect-[1200/630] w-full rounded-2xl border border-emerald-800/25 object-cover shadow-lg"
+                      alt="Example interface of FK Downloader"
+                      className="min-h-[320px] w-full rounded-2xl border border-emerald-800/25 object-cover shadow-lg sm:min-h-[380px]"
                     />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-3">
+                    <div className="grid gap-3">
+                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                           <Download className="h-4 w-4" />
-                          One-click download
+                          Primary action
                         </div>
                         <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          Keep the main action easy to spot and easy to tap.
+                          Paste a link, search, then hit the main download button.
                         </p>
                       </div>
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-3">
+                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
                         <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                           <Maximize2 className="h-4 w-4" />
                           Fullscreen preview
                         </div>
                         <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          Open videos full screen when you want a closer look.
+                          Open the preview full screen when you want a closer look.
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-emerald-800/25 bg-black/25 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                          <Info className="h-4 w-4" />
+                          Format choices
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                          Choose MP4 for video or MP3 for audio, then save locally.
                         </p>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
+              </figure>
             </div>
           </div>
         </header>
