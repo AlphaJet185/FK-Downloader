@@ -13,6 +13,7 @@ import {
   Headphones,
   LayoutGrid,
   Loader2,
+  Mic,
   MessageSquare,
   Maximize2,
   Music,
@@ -626,7 +627,7 @@ export default function App() {
     setSavedPreviewDuration(0);
   }, [selectedSavedDownload?.id, savedPlaybackUrl]);
 
-  const handleSearch = async (searchQuery: string = query) => {
+  const handleSearch = async (searchQuery: string = query, options?: { preserveRecognition?: boolean }) => {
     const trimmedQuery = searchQuery.trim();
     if (!trimmedQuery) return;
 
@@ -634,7 +635,9 @@ export default function App() {
     setShowSuggestions(false);
     setSelectedVideo(null);
     setVideoDetails(null);
-    setRecognition(null);
+    if (!options?.preserveRecognition) {
+      setRecognition(null);
+    }
     setError('');
     setStatus('Searching');
 
@@ -924,7 +927,7 @@ export default function App() {
     setRecognition(recognized);
     setQuery(recognizedQuery);
     setStatus('Match found');
-    await handleSearch(recognizedQuery);
+    await handleSearch(recognizedQuery, { preserveRecognition: true });
   };
 
   const handleRecognize = async () => {
@@ -2047,8 +2050,19 @@ export default function App() {
                 disabled={isSearching}
                 aria-label="Search videos"
                 className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 sm:w-auto xl:min-w-[120px]"
-              >
+                >
                 {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => void handleRecognize()}
+                disabled={isRecognizing}
+                aria-label="Recognize audio with Audd"
+                className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto xl:min-w-[150px]"
+              >
+                {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+                {isRecognizing ? 'Listening...' : 'Recognize'}
               </button>
 
               {canDownloadPastedLink && (
@@ -2077,9 +2091,9 @@ export default function App() {
               )}
             </div>
 
-            {directInputVideoId && !selectedVideo && (
-              <div className="mt-5 rounded-2xl border border-emerald-800/30 bg-black/20 p-4 sm:p-5">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                {directInputVideoId && !selectedVideo && (
+                  <div className="mt-5 rounded-2xl border border-emerald-800/30 bg-black/20 p-4 sm:p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
                   <div className="relative overflow-hidden rounded-2xl border border-emerald-800/25 bg-zinc-950/90 lg:w-52">
                     <img
                       src={directInputThumbnail}
@@ -2109,11 +2123,25 @@ export default function App() {
                       The thumbnail appears immediately so users can confirm the link before downloading formats.
                     </p>
                   </div>
-                </div>
+                    </div>
+                  </div>
+                )}
+
+                {recognition && (
+                  <div className="mt-5 rounded-2xl border border-emerald-700/35 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+                    <div className="flex items-center gap-2 font-semibold text-emerald-200">
+                      <Mic className="h-4 w-4 text-emerald-300" />
+                      Match found
+                    </div>
+                    <p className="mt-1 text-emerald-100/75">
+                      {recognition.artist} - {recognition.title}
+                      {recognition.album ? ` · ${recognition.album}` : ''}
+                      {recognition.releaseDate ? ` · ${recognition.releaseDate}` : ''}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
-          </div>
-        )}
 
         {activeView === 'home' && (
           <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">

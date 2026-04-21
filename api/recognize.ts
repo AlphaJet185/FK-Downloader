@@ -1,10 +1,17 @@
 import type { ApiRequest, ApiResponse } from './types';
 import multer from 'multer';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import axios from 'axios';
 import FormData from 'form-data';
 
-const upload = multer({ dest: '/tmp' });
+const uploadDir = path.join(os.tmpdir(), 'fk-recognize');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const upload = multer({ dest: uploadDir });
 
 export const config = { api: { bodyParser: false } };
 
