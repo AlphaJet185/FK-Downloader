@@ -3320,10 +3320,12 @@ export default function App() {
           </div>
         )}
 
-        {visibleResults.length === 0 && !isSearching && !selectedVideo && (
-          <div className="py-20 text-center text-emerald-800/50">
-            <Search className="mx-auto mb-4 h-16 w-16 opacity-20" />
-            <p>{isOffline ? 'Reconnect or search something from your saved history.' : 'Search for a video to get started.'}</p>
+        {visibleResults.length === 0 && !isSearching && !selectedVideo && query.trim() && (
+          <div className="py-6 text-center text-emerald-800/50">
+            <Search className="mx-auto mb-3 h-10 w-10 opacity-20" />
+            <p className="text-sm">
+              {isOffline ? 'Reconnect or search something from your saved history.' : 'Search for a video to get started.'}
+            </p>
           </div>
         )}
 
