@@ -2116,6 +2116,35 @@ export default function App() {
         )}
 
         {activeView === 'home' && (
+          <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <MessageSquare className="h-4 w-4" />
+              FAQ
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">What do I paste here?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Paste a YouTube URL or search with keywords to find the video you want.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Can I keep it offline?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Yes. Save a local copy or keep a browser copy for offline access later.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Is it mobile-friendly?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  The main search field and download buttons are sized for thumbs and touch input.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeView === 'home' && (
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -2192,35 +2221,6 @@ export default function App() {
               </div>
             </aside>
           </div>
-        )}
-
-        {activeView === 'home' && (
-          <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-              <MessageSquare className="h-4 w-4" />
-              FAQ
-            </h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">What do I paste here?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  Paste a YouTube URL or search with keywords to find the video you want.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">Can I keep it offline?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  Yes. Save a local copy or keep a browser copy for offline access later.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">Is it mobile-friendly?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  The main search field and download buttons are sized for thumbs and touch input.
-                </p>
-              </div>
-            </div>
-          </section>
         )}
 
         {activeView === 'settings' ? (
