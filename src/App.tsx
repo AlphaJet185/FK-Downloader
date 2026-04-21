@@ -26,7 +26,9 @@ import {
   SkipForward,
   Sparkles,
   UploadCloud,
+  Youtube,
   Video,
+  MonitorSmartphone,
   Wifi,
   WifiOff
 } from 'lucide-react';
@@ -1662,6 +1664,8 @@ export default function App() {
   const showingOfflineSearchResults =
     isOffline && !selectedVideo && resultSource === 'offline-search' && results.length > 0;
   const directInputVideoId = extractYouTubeVideoId(query.trim());
+  const directInputHost = looksLikeUrl(query.trim()) ? new URL(query.trim()).hostname.replace(/^www\./, '') : '';
+  const directInputThumbnail = directInputVideoId ? fallbackThumbnail(directInputVideoId) : '';
   const canDownloadPastedLink = Boolean(directInputVideoId);
   const showOfflineDownloadsShelf = !selectedVideo && offlineDownloads.length > 0 && (isOffline || visibleResults.length === 0);
   const hasSavedOfflineCopy = Boolean(selectedOfflineDownload);
@@ -1970,90 +1974,6 @@ export default function App() {
         </header>
 
         {activeView === 'home' && (
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                <Info className="h-4 w-4" />
-                How it works
-              </h2>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
-                  <div className="mt-2 text-sm font-semibold text-emerald-100">Paste a link or search</div>
-                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                    Drop in a YouTube URL or type a keyword to find the video.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
-                  <div className="mt-2 text-sm font-semibold text-emerald-100">Choose a format</div>
-                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                    Pick a resolution like 360p or 1080p, or choose an audio format like MP3 or MP4A.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 3</div>
-                  <div className="mt-2 text-sm font-semibold text-emerald-100">Save or play offline</div>
-                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                    Download to your device, keep a browser copy, or open the preview full screen.
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <aside className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                <Clock3 className="h-4 w-4" />
-                About FK Downloader
-              </h2>
-              <p className="mt-3 text-sm leading-6 text-emerald-100/70">
-                FK Downloader is a compact video utility for quick search, preview, saving, and offline playback.
-                It is designed to feel fast on desktop and touch-friendly on mobile.
-              </p>
-              <div className="mt-4">
-                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">
-                  Supported platforms
-                </h3>
-                <ul className="mt-3 space-y-2 text-sm text-emerald-100/70">
-                  <li>YouTube links and pasted URLs</li>
-                  <li>Desktop app mode with local file saving</li>
-                  <li>Offline browser copies for saved videos</li>
-                </ul>
-              </div>
-            </aside>
-          </div>
-        )}
-
-        {activeView === 'home' && (
-          <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-              <MessageSquare className="h-4 w-4" />
-              FAQ
-            </h2>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">What do I paste here?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  Paste a YouTube URL or search with keywords to find the video you want.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">Can I keep it offline?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  Yes. Save a local copy or keep a browser copy for offline access later.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                <h3 className="text-sm font-semibold text-emerald-100">Is it mobile-friendly?</h3>
-                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                  The main search field and download buttons are sized for thumbs and touch input.
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {activeView === 'home' && (
           <div className="relative z-10 overflow-hidden rounded-[1.5rem] border border-emerald-800/35 bg-zinc-900/55 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.2)] backdrop-blur-sm sm:p-6">
             <div className="mx-auto flex max-w-4xl flex-col gap-4 xl:flex-row">
               <div className="relative flex-1">
@@ -2156,7 +2076,151 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {directInputVideoId && !selectedVideo && (
+              <div className="mt-5 rounded-2xl border border-emerald-800/30 bg-black/20 p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                  <div className="relative overflow-hidden rounded-2xl border border-emerald-800/25 bg-zinc-950/90 lg:w-52">
+                    <img
+                      src={directInputThumbnail}
+                      alt="Detected video thumbnail"
+                      className="aspect-video w-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.src = fallbackThumbnail(directInputVideoId);
+                      }}
+                    />
+                    <div className="absolute left-3 top-3 rounded-full border border-emerald-500/30 bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
+                      URL detected
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                      <Youtube className="h-4 w-4 text-emerald-300" />
+                      Ready to inspect this link
+                    </div>
+                    <div className="mt-2 text-lg font-bold text-emerald-100">
+                      {directInputHost || 'YouTube link'}
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-emerald-100/70">
+                      Detected video ID: <span className="font-mono text-emerald-300">{directInputVideoId}</span>
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-emerald-100/60">
+                      The thumbnail appears immediately so users can confirm the link before downloading formats.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+        )}
+
+        {activeView === 'home' && (
+          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <Info className="h-4 w-4" />
+                How it works
+              </h2>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Paste a link or search</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Drop in a YouTube URL or type a keyword to find the video.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 2</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Choose a format</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Pick a resolution like 360p or 1080p, or choose an audio format like MP3 or MP4A.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 3</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-100">Save or play offline</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                    Download to your device, keep a browser copy, or open the preview full screen.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <aside className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                <Clock3 className="h-4 w-4" />
+                About FK Downloader
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-emerald-100/70">
+                FK Downloader is a compact video utility for quick search, preview, saving, and offline playback.
+                It is designed to feel fast on desktop and touch-friendly on mobile.
+              </p>
+              <div className="mt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-500">
+                  Supported platforms
+                </h3>
+                <ul className="mt-3 grid gap-3 text-sm text-emerald-100/70">
+                  <li className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
+                      <Youtube className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block font-semibold text-emerald-100">YouTube links</span>
+                      <span className="block text-emerald-100/65">Paste a URL and the app recognizes it right away.</span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
+                      <MonitorSmartphone className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block font-semibold text-emerald-100">Desktop and mobile</span>
+                      <span className="block text-emerald-100/65">Works in browser mode and the desktop app.</span>
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
+                      <HardDriveDownload className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block font-semibold text-emerald-100">Offline copies</span>
+                      <span className="block text-emerald-100/65">Keep browser copies or saved files for later access.</span>
+                    </span>
+                  </li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {activeView === 'home' && (
+          <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+              <MessageSquare className="h-4 w-4" />
+              FAQ
+            </h2>
+            <div className="mt-4 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">What do I paste here?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Paste a YouTube URL or search with keywords to find the video you want.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Can I keep it offline?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  Yes. Save a local copy or keep a browser copy for offline access later.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                <h3 className="text-sm font-semibold text-emerald-100">Is it mobile-friendly?</h3>
+                <p className="mt-1 text-xs leading-5 text-emerald-100/65">
+                  The main search field and download buttons are sized for thumbs and touch input.
+                </p>
+              </div>
+            </div>
+          </section>
         )}
 
         {activeView === 'settings' ? (
