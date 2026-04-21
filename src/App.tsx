@@ -1795,7 +1795,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-12 lg:gap-16">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-8 lg:gap-12">
         <header className="relative pt-2">
           <div className="mb-4 flex justify-end sm:mb-5">
             <button
@@ -1811,14 +1811,14 @@ export default function App() {
             </button>
           </div>
 
-          <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-5 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-7 sm:py-8">
+          <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-4 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-6 sm:py-6">
             <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
               <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
                   <Download className="h-3.5 w-3.5" />
                   Video downloader
                 </div>
-                <h1 className="mt-4 text-4xl font-black tracking-tight text-white sm:text-5xl">
+                <h1 className="mt-4 text-3xl font-black tracking-tight text-white sm:text-4xl">
                   Download High-Quality Videos Instantly
                 </h1>
                 <p className="mt-2 text-xs font-semibold uppercase tracking-[0.3em] text-emerald-400">
@@ -1881,7 +1881,7 @@ export default function App() {
                     </span>
                   </figcaption>
                   <div className="grid gap-4 p-4 lg:grid-cols-[1.45fr_0.55fr] lg:items-stretch">
-                    <div className="min-h-[360px] rounded-2xl border border-emerald-800/25 bg-gradient-to-br from-black/85 via-emerald-950/70 to-zinc-950 p-5 shadow-lg sm:min-h-[440px]">
+                  <div className="min-h-[320px] rounded-2xl border border-emerald-800/25 bg-gradient-to-br from-black/85 via-emerald-950/70 to-zinc-950 p-4 shadow-lg sm:min-h-[380px]">
                       <div className="flex items-center justify-between border-b border-emerald-800/20 pb-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-400">
                         <span>Example interface</span>
                         <span className="rounded-full border border-emerald-700/30 bg-emerald-950/40 px-2 py-1">
@@ -1889,7 +1889,7 @@ export default function App() {
                         </span>
                       </div>
                       <div className="mt-4 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-                        <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-5">
+                        <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-4">
                           <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/35 bg-emerald-950/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
                             <Download className="h-3.5 w-3.5" />
                             Search and download
@@ -2054,7 +2054,7 @@ export default function App() {
         )}
 
         {activeView === 'settings' ? (
-          <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-5 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-7">
+          <div className="rounded-[2rem] border border-emerald-800/40 bg-zinc-900/60 p-4 shadow-[0_22px_80px_rgba(0,0,0,0.35)] backdrop-blur sm:p-6">
             <div className="flex flex-col gap-4 border-b border-emerald-800/30 pb-5 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <button
@@ -2075,29 +2075,29 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
+            <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">
                   {downloadSettings.folderPath ? 'Configured' : 'Ask first'}
                 </div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Saved files</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{savedDownloads.length}</div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
               </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-5">
+              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
                 <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-6">
+            <div className="mt-6 grid gap-5 lg:grid-cols-[1.3fr_0.9fr]">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <FolderOpen className="h-4 w-4" />
                   Save location
@@ -2115,7 +2115,7 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-6">
+              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
                 <div className="text-sm font-semibold text-emerald-200">App actions</div>
                 <div className="mt-4 flex flex-col gap-3">
                   <button
@@ -2557,7 +2557,7 @@ export default function App() {
 
         {selectedSavedDownload && (
           <div className="flex flex-col overflow-hidden rounded-2xl border border-emerald-800/30 bg-zinc-900/50 md:flex-row">
-            <div className="flex-1 border-b border-emerald-800/30 p-7 md:border-b-0 md:border-r">
+              <div className="flex-1 border-b border-emerald-800/30 p-6 md:border-b-0 md:border-r">
               <div className="mb-4 flex items-center gap-2 font-semibold text-emerald-300">
                 <FolderOpen className="h-4 w-4" />
                 Saved File
@@ -2600,7 +2600,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="w-full bg-zinc-950/50 p-7 text-center md:w-80">
+            <div className="w-full bg-zinc-950/50 p-6 text-center md:w-80">
               {savedPlaybackUrl ? (
                 <div ref={savedPreviewPanelRef} className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                   <div className="relative">
@@ -3308,7 +3308,7 @@ export default function App() {
         </div>
 
         <footer className="space-y-6 border-t border-emerald-900/30 pt-10 pb-6">
-          <div className="flex flex-col gap-4 rounded-[1.5rem] border border-emerald-800/25 bg-zinc-900/45 p-5 text-sm text-emerald-100/70 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-[1.5rem] border border-emerald-800/25 bg-zinc-900/45 p-4 text-sm text-emerald-100/70 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="font-semibold text-emerald-100">Need help or want to read the fine print?</div>
               <p className="mt-1 max-w-2xl leading-6">

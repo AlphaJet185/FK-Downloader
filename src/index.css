@@ -11,6 +11,12 @@ html {
   width: 100%;
 }
 
+@media (min-width: 1280px) {
+  html {
+    font-size: 15px;
+  }
+}
+
 body {
   width: 100%;
   min-height: 100vh;
