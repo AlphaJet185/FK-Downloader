@@ -1779,7 +1779,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen bg-gradient-to-br from-emerald-950 via-zinc-950 to-emerald-900 text-emerald-50 p-6 transition-colors ${
+      className={`min-h-screen w-full bg-gradient-to-br from-emerald-950 via-zinc-950 to-emerald-900 px-4 py-4 text-emerald-50 transition-colors sm:px-6 lg:px-8 ${
         isDragging ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-900/20' : ''
       }`}
       onDragOver={handleDragOver}
@@ -1795,7 +1795,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="relative z-10 mx-auto max-w-5xl space-y-12 lg:space-y-16">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1600px] flex-col gap-12 lg:gap-16">
         <header className="relative pt-2">
           <div className="mb-4 flex justify-end sm:mb-5">
             <button
@@ -1812,7 +1812,7 @@ export default function App() {
           </div>
 
           <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-5 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-7 sm:py-8">
-            <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-center">
+            <div className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
               <div className="mx-auto max-w-3xl text-center lg:mx-0 lg:text-left">
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
                   <Download className="h-3.5 w-3.5" />
