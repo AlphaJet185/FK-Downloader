@@ -1848,10 +1848,10 @@ export default function App() {
                       <div>
                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-emerald-950/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
                           <Search className="h-3.5 w-3.5" />
-                          Example interface
+                          Start here
                         </div>
                         <p className="mt-2 text-sm text-emerald-100/65">
-                          This is the demo panel. The live search input now sits lower on the page.
+                          Paste a link or search here. Settings now handles the extra controls and thumbnail history.
                         </p>
                       </div>
                       <div
@@ -1869,40 +1869,172 @@ export default function App() {
                       <div className="rounded-2xl border border-emerald-800/25 bg-black/35 p-4">
                         <div className="inline-flex items-center gap-2 rounded-full border border-emerald-700/35 bg-emerald-950/35 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
                           <Download className="h-3.5 w-3.5" />
-                          Search and download
+                          Live search
                         </div>
-                        <div className="mt-4 rounded-2xl border border-emerald-700/30 bg-zinc-950/80 p-4">
-                          <div className="h-3 w-24 rounded-full bg-emerald-500/30" />
-                          <div className="mt-3 h-10 rounded-xl border border-emerald-700/30 bg-black/40 px-4 py-2.5 text-sm text-emerald-100/55">
-                            Paste a YouTube URL or search a video...
+                        <div className="mt-4">
+                          <div className="relative">
+                            <label htmlFor="search-input" className="sr-only">
+                              Paste a YouTube URL or search for a video
+                            </label>
+                            <input
+                              id="search-input"
+                              ref={searchInputRef}
+                              type="text"
+                              value={query}
+                              onChange={(e) => {
+                                setQuery(e.target.value);
+                                setShowSuggestions(!looksLikeUrl(e.target.value));
+                              }}
+                              onFocus={() => {
+                                if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
+                                  setShowSuggestions(true);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  setShowSuggestions(false);
+                                  suggestAbortRef.current?.abort();
+                                  searchInputRef.current?.blur();
+                                  void handleSearch();
+                                }
+                              }}
+                              placeholder="Paste YouTube URL or search for a video..."
+                              aria-label="Search videos or paste a YouTube URL"
+                              aria-describedby="search-help"
+                              className="w-full rounded-2xl border border-emerald-700/35 bg-zinc-950/85 px-4 py-3.5 pl-12 text-sm text-emerald-100 placeholder-emerald-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
+                            />
+                            <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
+                            <p id="search-help" className="sr-only">
+                              Press Enter to search or use the download button once a URL is pasted.
+                            </p>
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
-                              MP4
-                            </span>
-                            <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
-                              MP3
-                            </span>
-                            <span className="rounded-full border border-emerald-700/30 bg-emerald-950/30 px-3 py-1.5 text-[11px] text-emerald-200">
-                              360p
-                            </span>
+
+                          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => void handleSearch()}
+                              disabled={isSearching}
+                              aria-label="Search videos"
+                              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50 sm:flex-1"
+                            >
+                              {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => void handlePasteClipboard()}
+                              aria-label="Paste a link from the clipboard"
+                              className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10 sm:w-auto"
+                            >
+                              <Clipboard className="h-5 w-5" />
+                              Paste
+                            </button>
+
+                            {canDownloadPastedLink && (
+                              <button
+                                type="button"
+                                onClick={() => void handleLinkDownload()}
+                                disabled={Boolean(downloadState) || isOffline}
+                                aria-label="Download the pasted YouTube link now"
+                                className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-1"
+                              >
+                                {downloadState?.key === 'link-download' ? (
+                                  <Loader2 className="h-5 w-5 animate-spin" />
+                                ) : isOffline ? (
+                                  <WifiOff className="h-5 w-5" />
+                                ) : (
+                                  <Download className="h-5 w-5" />
+                                )}
+                                {isOffline
+                                  ? 'Needs internet'
+                                  : downloadState?.key === 'link-download'
+                                    ? downloadState.phase === 'saving'
+                                      ? 'Saving...'
+                                      : 'Downloading...'
+                                    : 'Download Now'}
+                              </button>
+                            )}
                           </div>
-                          <div className="mt-4 flex gap-3">
-                            <div className="h-10 flex-1 rounded-xl bg-emerald-500" />
-                            <div className="h-10 flex-1 rounded-xl border border-emerald-700/30 bg-white/5" />
-                          </div>
+
+                          {showSuggestions && suggestions.length > 0 && (
+                            <ul className="mt-2 max-h-64 w-full overflow-y-auto rounded-2xl border border-emerald-800/40 bg-zinc-900/98 shadow-2xl">
+                              {suggestions.map((suggestion, index) => (
+                                <li
+                                  key={`${suggestion}-${index}`}
+                                  onClick={() => {
+                                    setQuery(suggestion);
+                                    void handleSearch(suggestion);
+                                  }}
+                                  className="cursor-pointer px-4 py-3 text-sm text-emerald-200 transition-colors hover:bg-emerald-900/40 sm:text-base"
+                                >
+                                  {suggestion}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          {directInputVideoId && !selectedVideo && (
+                            <div className="mt-4 rounded-2xl border border-emerald-800/30 bg-black/20 p-4 sm:p-5">
+                              <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                                <div className="relative overflow-hidden rounded-2xl border border-emerald-800/25 bg-zinc-950/90 lg:w-52">
+                                  <img
+                                    src={directInputThumbnail}
+                                    alt="Detected video thumbnail"
+                                    className="aspect-video w-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.src = fallbackThumbnail(directInputVideoId);
+                                    }}
+                                  />
+                                  <div className="absolute left-3 top-3 rounded-full border border-emerald-500/30 bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
+                                    URL detected
+                                  </div>
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                                    <Youtube className="h-4 w-4 text-emerald-300" />
+                                    Ready to inspect this link
+                                  </div>
+                                  <div className="mt-2 text-lg font-bold text-emerald-100">
+                                    {directInputHost || 'YouTube link'}
+                                  </div>
+                                  <p className="mt-1 text-sm leading-6 text-emerald-100/70">
+                                    Detected video ID: <span className="font-mono text-emerald-300">{directInputVideoId}</span>
+                                  </p>
+                                  <p className="mt-1 text-sm leading-6 text-emerald-100/60">
+                                    The thumbnail appears immediately so you can confirm the link before downloading formats.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {recognition && (
+                            <div className="mt-4 rounded-2xl border border-emerald-700/35 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+                              <div className="flex items-center gap-2 font-semibold text-emerald-200">
+                                <Mic className="h-4 w-4 text-emerald-300" />
+                                Match found
+                              </div>
+                              <p className="mt-1 text-emerald-100/75">
+                                {recognition.artist} - {recognition.title}
+                                {recognition.album ? ` · ${recognition.album}` : ''}
+                                {recognition.releaseDate ? ` · ${recognition.releaseDate}` : ''}
+                              </p>
+                            </div>
+                          )}
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                           <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-4">
-                            <div className="text-xs font-semibold text-emerald-200">Primary action</div>
+                            <div className="text-xs font-semibold text-emerald-200">Home preview</div>
                             <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
-                              Bright, centered, and easy to tap.
+                              Visual only. No live controls here.
                             </p>
                           </div>
                           <div className="rounded-2xl border border-emerald-800/25 bg-white/5 p-4">
-                            <div className="text-xs font-semibold text-emerald-200">Format choices</div>
+                            <div className="text-xs font-semibold text-emerald-200">Settings focus</div>
                             <p className="mt-1 text-[11px] leading-5 text-emerald-100/65">
-                              Pick video or audio formats before saving.
+                              Thumbnails, download history, and save controls live in Settings.
                             </p>
                           </div>
                         </div>
@@ -2120,183 +2252,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-
-            <section className="mt-5 rounded-[1.5rem] border border-emerald-800/35 bg-zinc-900/55 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.2)] backdrop-blur-sm sm:p-6">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                    <Search className="h-4 w-4" />
-                    Live search
-                  </h3>
-                  <p className="mt-1 text-sm text-emerald-100/65">
-                    The working input lives here. The layout uses auto-fit cards so it stays usable at browser zoom.
-                  </p>
-                </div>
-                <div
-                  className={`inline-flex w-fit rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                    isOffline
-                      ? 'border-red-500/30 bg-red-950/15 text-red-300'
-                      : 'border-emerald-500/30 bg-emerald-950/20 text-emerald-300'
-                  }`}
-                >
-                  {isOffline ? 'Offline' : 'Online'}
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-4 xl:grid-cols-[1fr_auto]">
-                <div className="relative">
-                  <label htmlFor="search-input" className="sr-only">
-                    Paste a YouTube URL or search for a video
-                  </label>
-                  <input
-                    id="search-input"
-                    ref={searchInputRef}
-                    type="text"
-                    value={query}
-                    onChange={(e) => {
-                      setQuery(e.target.value);
-                      setShowSuggestions(!looksLikeUrl(e.target.value));
-                    }}
-                    onFocus={() => {
-                      if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
-                        setShowSuggestions(true);
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        setShowSuggestions(false);
-                        suggestAbortRef.current?.abort();
-                        searchInputRef.current?.blur();
-                        void handleSearch();
-                      }
-                    }}
-                    placeholder="Paste YouTube URL or search for a video..."
-                    aria-label="Search videos or paste a YouTube URL"
-                    aria-describedby="search-help"
-                    className="w-full rounded-2xl border border-emerald-700/35 bg-zinc-950/85 px-4 py-3.5 pl-12 text-sm text-emerald-100 placeholder-emerald-700/80 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:text-base"
-                  />
-                  <Search className="absolute left-4 top-3.5 h-5 w-5 text-emerald-500" />
-                  <p id="search-help" className="sr-only">
-                    Press Enter to search or use the download button once a URL is pasted.
-                  </p>
-                </div>
-
-                <div className="flex flex-col gap-3 sm:flex-row xl:flex-col">
-                  <button
-                    type="button"
-                    onClick={() => void handleSearch()}
-                    disabled={isSearching}
-                    aria-label="Search videos"
-                    className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:opacity-50"
-                  >
-                    {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => void handlePasteClipboard()}
-                    aria-label="Paste a link from the clipboard"
-                    className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 font-semibold text-emerald-100 transition-colors hover:bg-white/10"
-                  >
-                    <Clipboard className="h-5 w-5" />
-                    Paste
-                  </button>
-
-                  {canDownloadPastedLink && (
-                    <button
-                      type="button"
-                      onClick={() => void handleLinkDownload()}
-                      disabled={Boolean(downloadState) || isOffline}
-                      aria-label="Download the pasted YouTube link now"
-                      className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/35 bg-emerald-950/35 px-5 py-3 font-semibold text-emerald-100 transition-colors hover:bg-emerald-900/35 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {downloadState?.key === 'link-download' ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : isOffline ? (
-                        <WifiOff className="h-5 w-5" />
-                      ) : (
-                        <Download className="h-5 w-5" />
-                      )}
-                      {isOffline
-                        ? 'Needs internet'
-                        : downloadState?.key === 'link-download'
-                          ? downloadState.phase === 'saving'
-                            ? 'Saving...'
-                            : 'Downloading...'
-                          : 'Download Now'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {showSuggestions && suggestions.length > 0 && (
-                <ul className="mt-3 max-h-64 w-full overflow-y-auto rounded-2xl border border-emerald-800/40 bg-zinc-900/98 shadow-2xl">
-                  {suggestions.map((suggestion, index) => (
-                    <li
-                      key={`${suggestion}-${index}`}
-                      onClick={() => {
-                        setQuery(suggestion);
-                        void handleSearch(suggestion);
-                      }}
-                      className="cursor-pointer px-4 py-3 text-sm text-emerald-200 transition-colors hover:bg-emerald-900/40 sm:text-base"
-                    >
-                      {suggestion}
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {directInputVideoId && !selectedVideo && (
-                <div className="mt-4 rounded-2xl border border-emerald-800/30 bg-black/20 p-4 sm:p-5">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-                    <div className="relative overflow-hidden rounded-2xl border border-emerald-800/25 bg-zinc-950/90 lg:w-52">
-                      <img
-                        src={directInputThumbnail}
-                        alt="Detected video thumbnail"
-                        className="aspect-video w-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.src = fallbackThumbnail(directInputVideoId);
-                        }}
-                      />
-                      <div className="absolute left-3 top-3 rounded-full border border-emerald-500/30 bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
-                        URL detected
-                      </div>
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                        <Youtube className="h-4 w-4 text-emerald-300" />
-                        Ready to inspect this link
-                      </div>
-                      <div className="mt-2 text-lg font-bold text-emerald-100">
-                        {directInputHost || 'YouTube link'}
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-emerald-100/70">
-                        Detected video ID: <span className="font-mono text-emerald-300">{directInputVideoId}</span>
-                      </p>
-                      <p className="mt-1 text-sm leading-6 text-emerald-100/60">
-                        The thumbnail appears immediately so you can confirm the link before downloading formats.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {recognition && (
-                <div className="mt-4 rounded-2xl border border-emerald-700/35 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
-                  <div className="flex items-center gap-2 font-semibold text-emerald-200">
-                    <Mic className="h-4 w-4 text-emerald-300" />
-                    Match found
-                  </div>
-                  <p className="mt-1 text-emerald-100/75">
-                    {recognition.artist} - {recognition.title}
-                    {recognition.album ? ` · ${recognition.album}` : ''}
-                    {recognition.releaseDate ? ` · ${recognition.releaseDate}` : ''}
-                  </p>
-                </div>
-              )}
-            </section>
 
             <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
               <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
