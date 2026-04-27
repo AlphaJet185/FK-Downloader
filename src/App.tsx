@@ -1832,6 +1832,11 @@ export default function App() {
           {activeView === 'home' && (
             <div className="rounded-[2rem] border border-emerald-800/35 bg-zinc-900/50 px-4 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.3)] backdrop-blur-sm sm:px-6 sm:py-6">
               <div className="mx-auto max-w-3xl">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="rounded-full border border-emerald-700/35 bg-emerald-950/40 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300">
+                    Search to get started
+                  </div>
+                </div>
                 <div className="rounded-[1.75rem] border border-emerald-700/35 bg-black/25 p-4 shadow-[0_18px_40px_rgba(0,0,0,0.18)] sm:p-5">
                   <div className="relative">
                     <label htmlFor="search-input" className="sr-only">
@@ -1957,8 +1962,7 @@ export default function App() {
                 </button>
                 <h2 className="text-xl font-bold text-emerald-100 sm:text-2xl">Settings</h2>
                 <p className="mt-1 max-w-2xl text-sm text-emerald-500">
-                  Save location and app actions live here. Keep browser-only copies local, or choose a download folder
-                  when you need files on disk.
+                  Two sections keep this page easier to scan: how to use, then workspace and storage controls.
                 </p>
               </div>
               <div className="inline-flex w-fit items-center rounded-full border border-emerald-800/50 bg-zinc-950/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
@@ -1966,157 +1970,11 @@ export default function App() {
               </div>
             </div>
 
-            <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
-                <div className="mt-2 text-lg font-semibold text-emerald-100">
-                  {downloadSettings.folderPath ? 'Configured' : 'Local only'}
-                </div>
-                <p className="mt-2 text-xs leading-5 text-emerald-100/60">
-                  {downloadSettings.folderPath
-                    ? 'Desktop downloads will use your chosen folder.'
-                    : 'Browser copies stay local until you choose a folder on desktop.'}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Saved files</div>
-                <div className="mt-2 text-lg font-semibold text-emerald-100">{savedDownloads.length}</div>
-                <p className="mt-2 text-xs leading-5 text-emerald-100/60">Files you saved to a local folder.</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
-                <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
-                <p className="mt-2 text-xs leading-5 text-emerald-100/60">Browser-stored copies for quick reopening.</p>
-              </div>
-              <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
-                <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
-                <p className="mt-2 text-xs leading-5 text-emerald-100/60">Recent videos available from local history.</p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-5 lg:grid-cols-[1.3fr_0.9fr]">
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <FolderOpen className="h-4 w-4" />
-                  Save location
-                </div>
-                <p className="mt-3 break-all text-sm leading-6 text-emerald-500">
-                  {downloadSettings.folderPath || 'No folder selected yet. Desktop downloads will prompt the first time.'}
-                </p>
-                <p className="mt-2 text-xs leading-5 text-emerald-100/60">
-                  Browser mode keeps its own local copy. Desktop mode can also write directly to a chosen folder.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void handleChangeSaveLocation()}
-                  className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40"
-                >
-                  <FolderOpen className="h-4 w-4" />
-                  Change location
-                </button>
-              </div>
-
-              <div className="rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
-                <div className="text-sm font-semibold text-emerald-200">App actions</div>
-                <div className="mt-4 flex flex-col gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveView('home');
-                      window.setTimeout(() => searchInputRef.current?.focus(), 60);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/25"
-                  >
-                    <Search className="h-4 w-4" />
-                    Open search
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openSavedFilesView}
-                    disabled={savedDownloads.length === 0}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <FolderOpen className="h-4 w-4" />
-                    Open saved files
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsFeedbackOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    Send feedback
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-              <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
-                  <Sparkles className="h-4 w-4" />
-                  Recent thumbnails
-                </h3>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-100/60">
-                  <span>
-                    Showing {settingsRecentVideos.length}
-                    {offlineLibrary.length > 0 ? ` of ${offlineLibrary.length}` : ''} thumbnails
-                  </span>
-                  {offlineLibrary.length > settingsThumbnailCount && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSettingsThumbnailCount((current) =>
-                          Math.min(current + 12, Math.max(12, offlineLibrary.length))
-                        )
-                      }
-                      className="inline-flex items-center gap-2 rounded-full border border-emerald-700/40 bg-black/20 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30"
-                    >
-                      Add more thumbnails
-                    </button>
-                  )}
-                </div>
-                <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr))]">
-                  {settingsRecentVideos.length > 0 ? (
-                    settingsRecentVideos.map((video) => (
-                      <button
-                        key={video.id}
-                        type="button"
-                        onClick={() => handleVideoClick(video)}
-                        className="group min-w-0 overflow-hidden rounded-2xl border border-emerald-800/25 bg-zinc-950/55 text-left transition-all hover:-translate-y-1 hover:border-emerald-500/50"
-                      >
-                        <div className="relative aspect-video bg-zinc-950">
-                          <img
-                            src={video.thumbnail || fallbackThumbnail(video.id)}
-                            alt={video.title}
-                            className="h-full w-full object-cover opacity-85 transition-opacity group-hover:opacity-100"
-                            onError={(e) => {
-                              e.currentTarget.src = fallbackThumbnail(video.id);
-                            }}
-                          />
-                          <div className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2 py-1 font-mono text-[11px] text-emerald-300">
-                            {formatDuration(video.duration)}
-                          </div>
-                        </div>
-                        <div className="p-3">
-                          <div className="line-clamp-2 text-sm font-semibold text-emerald-100">{video.title}</div>
-                          <div className="mt-1 text-xs text-emerald-500/80">{video.channel}</div>
-                        </div>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-emerald-800/35 bg-zinc-950/35 px-4 py-8 text-sm text-emerald-500/80">
-                      Recent downloads and opened videos will appear here after you process a few links.
-                    </div>
-                  )}
-                </div>
-              </section>
-
+            <div className="mt-5 grid gap-5 xl:grid-cols-2">
               <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <Info className="h-4 w-4" />
-                  Guidance
+                  How to use
                 </h3>
                 <div className="mt-4 grid gap-3">
                   <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
@@ -2148,9 +2006,9 @@ export default function App() {
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-2xl border border-emerald-800/20 bg-black/15 p-3">
                         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-500">Step 1</div>
-                        <div className="mt-2 text-sm font-semibold text-emerald-100">Open Settings</div>
+                        <div className="mt-2 text-sm font-semibold text-emerald-100">Open Home</div>
                         <p className="mt-1 text-xs leading-5 text-emerald-100/65">
-                          The live controls and content now live here.
+                          Use the search bar at the top for the fastest path.
                         </p>
                       </div>
                       <div className="rounded-2xl border border-emerald-800/20 bg-black/15 p-3">
@@ -2169,55 +2027,95 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+                </div>
+              </section>
 
-                  <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                    <h4 className="text-sm font-semibold text-emerald-100">About FK Downloader</h4>
-                    <p className="mt-2 text-sm leading-6 text-emerald-100/70">
-                      FK Downloader is a compact video utility for quick search, preview, saving, and offline playback.
-                      It is designed to feel fast on desktop and touch-friendly on mobile.
+              <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                  <FolderOpen className="h-4 w-4" />
+                  Workspace & storage
+                </h3>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
+                    <div className="mt-2 text-lg font-semibold text-emerald-100">
+                      {downloadSettings.folderPath ? 'Configured' : 'Local only'}
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-emerald-100/60">
+                      {downloadSettings.folderPath
+                        ? 'Desktop downloads will use your chosen folder.'
+                        : 'Browser copies stay local until you choose a folder on desktop.'}
                     </p>
-                    <div className="mt-4 grid gap-3">
-                      <div className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
-                          <Youtube className="h-4 w-4" />
-                        </span>
-                        <span>
-                          <span className="block font-semibold text-emerald-100">YouTube links</span>
-                          <span className="block text-emerald-100/65">Paste a URL and the app recognizes it right away.</span>
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
-                          <MonitorSmartphone className="h-4 w-4" />
-                        </span>
-                        <span>
-                          <span className="block font-semibold text-emerald-100">Desktop and mobile</span>
-                          <span className="block text-emerald-100/65">Works in browser mode and the desktop app.</span>
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-3 rounded-2xl border border-emerald-800/25 bg-black/20 px-4 py-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-700/40 bg-emerald-950/40 text-emerald-300">
-                          <HardDriveDownload className="h-4 w-4" />
-                        </span>
-                        <span>
-                          <span className="block font-semibold text-emerald-100">Offline copies</span>
-                          <span className="block text-emerald-100/65">Keep browser copies or saved files for later access.</span>
-                        </span>
-                      </div>
-                    </div>
                   </div>
+                  <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Saved files</div>
+                    <div className="mt-2 text-lg font-semibold text-emerald-100">{savedDownloads.length}</div>
+                    <p className="mt-2 text-xs leading-5 text-emerald-100/60">Files you saved to a local folder.</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
+                    <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
+                    <p className="mt-2 text-xs leading-5 text-emerald-100/60">Browser-stored copies for quick reopening.</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
+                    <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
+                    <p className="mt-2 text-xs leading-5 text-emerald-100/60">Recent videos available from local history.</p>
+                  </div>
+                </div>
 
-                  <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
-                    <h4 className="text-sm font-semibold text-emerald-100">Trust and storage</h4>
-                    <div className="mt-2 grid gap-3 text-sm text-emerald-100/70">
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/15 p-4">
-                        Downloads stay on your device. Browser copies use local storage, and desktop builds can write to
-                        a folder you choose.
-                      </div>
-                      <div className="rounded-2xl border border-emerald-800/25 bg-black/15 p-4">
-                        YouTube URLs are the supported source, including `youtube.com`, `youtu.be`, and `music.youtube.com`.
-                      </div>
-                    </div>
+                <div className="mt-5 rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                    <FolderOpen className="h-4 w-4" />
+                    Save location
+                  </div>
+                  <p className="mt-3 break-all text-sm leading-6 text-emerald-500">
+                    {downloadSettings.folderPath || 'No folder selected yet. Desktop downloads will prompt the first time.'}
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-emerald-100/60">
+                    Browser mode keeps its own local copy. Desktop mode can also write directly to a chosen folder.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleChangeSaveLocation()}
+                    className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-600/50 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/40"
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    Change location
+                  </button>
+                </div>
+
+                <div className="mt-5 rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+                  <div className="text-sm font-semibold text-emerald-200">App actions</div>
+                  <div className="mt-4 flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveView('home');
+                        window.setTimeout(() => searchInputRef.current?.focus(), 60);
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/25"
+                    >
+                      <Search className="h-4 w-4" />
+                      Open search
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openSavedFilesView}
+                      disabled={savedDownloads.length === 0}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-950/80 px-4 py-2.5 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                      Open saved files
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsFeedbackOpen(true)}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-2.5 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Send feedback
+                    </button>
                   </div>
                 </div>
               </section>
