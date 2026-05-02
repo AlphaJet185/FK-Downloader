@@ -1,9 +1,0 @@
-=3100 : The term '=3100' is not recognized as the name of a cmdlet, function, script file, or operable program. Check 
-the spelling of the name, or if a path was included, verify that the path is correct and try again.
-At line:1 char:1
-+ ='3100'; Set-Location 'e:\Zoro\FK'; node server.js
-+ ~~~~~~~
-    + CategoryInfo          : ObjectNotFound: (=3100:String) [], CommandNotFoundException
-    + FullyQualifiedErrorId : CommandNotFoundException
- 
-[31mWebSocket server error: Port 24678 is already in use[39m
