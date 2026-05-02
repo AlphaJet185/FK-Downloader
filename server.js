@@ -41,6 +41,8 @@ if (envFilePath) {
 const app = express();
 const DEFAULT_PORT = Number(process.env.PORT || 3000);
 const isProduction = process.env.NODE_ENV === "production";
+const useViteDevServer =
+  !isProduction && process.env.FK_USE_VITE_DEV === "1";
 const PUBLIC_DIR = path.join(appRootDir, "public");
 const STATIC_DIR = path.join(appRootDir, "static");
 const INDEX_HTML_PATH = path.join(appRootDir, "index.html");
@@ -62,7 +64,7 @@ app.use(cors());
 
 let vite = null;
 
-if (isProduction) {
+if (!useViteDevServer) {
   app.use(express.static(PUBLIC_DIR));
 } else {
   const { createServer } = await import("vite");
@@ -74,6 +76,16 @@ if (isProduction) {
     cacheDir: path.join(runtimeRootDir, "vite"),
     plugins: [react()],
     publicDir: STATIC_DIR,
+    resolve: {
+      preserveSymlinks: true,
+    },
+    optimizeDeps: {
+      noDiscovery: true,
+      include: [],
+      esbuildOptions: {
+        preserveSymlinks: true,
+      },
+    },
     build: {
       outDir: PUBLIC_DIR,
       emptyOutDir: true,

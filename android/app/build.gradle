@@ -52,3 +52,17 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Custom task to copy APK to your specific folder
+tasks.register('copyApkToRelease', Copy) {
+    from("${buildDir}/outputs/apk/release/")
+    into("E:/Zoro/FK/release")
+    include("app-release-unsigned.apk")
+    rename 'app-release-unsigned.apk', 'FKDownloader-release.apk'
+}
+
+project.afterEvaluate {
+    if (tasks.findByName('assembleRelease')) {
+        tasks.assembleRelease.finalizedBy(copyApkToRelease)
+    }
+}
