@@ -20,7 +20,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       }
     });
 
-    res.setHeader('Content-Type', response.headers['content-type'] || 'image/jpeg');
+    const contentTypeHeader = response.headers['content-type'];
+    const contentType =
+      typeof contentTypeHeader === 'string' ? contentTypeHeader : 'image/jpeg';
+
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
     res.status(200).send(Buffer.from(response.data));
   } catch (error) {
