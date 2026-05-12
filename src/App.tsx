@@ -1742,8 +1742,8 @@ export default function App() {
   const shouldShowSavedSection = savedDownloads.length > 0 && (libraryFilter === 'all' || libraryFilter === 'saved');
   const totalOfflineSize = offlineDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
   const totalSavedSize = savedDownloads.reduce((sum, download) => sum + download.sizeBytes, 0);
-  const heroRecentVideos = offlineLibrary.slice(0, 4);
   const settingsRecentVideos = offlineLibrary.slice(0, settingsThumbnailCount);
+  const shouldShowHomeEmptyState = activeView === 'home' && !selectedVideo && visibleResults.length === 0 && !isSearching;
   const recommendedAudioFormat = [...(videoDetails?.audioFormats || [])].sort((left, right) => {
     const sizeDelta = (parseApproxSize(right.contentLength) || 0) - (parseApproxSize(left.contentLength) || 0);
     if (sizeDelta !== 0) {
@@ -1811,105 +1811,167 @@ export default function App() {
 
       <main className="relative z-10 mx-auto flex w-full max-w-[1560px] flex-col gap-8 lg:gap-10">
         <header className="relative pt-4">
-          <div className="mx-auto flex w-full max-w-[1120px] flex-col gap-4">
-            <div className="flex items-center justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowSuggestions(false);
-                  setActiveView('settings');
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-emerald-700/35 bg-black/35 px-3 py-2 text-xs font-semibold text-emerald-200/90 transition-colors hover:bg-emerald-950/30 sm:px-4 sm:py-2.5 sm:text-sm"
-              >
-                <Settings className="h-4 w-4" />
-                Settings
-              </button>
-            </div>
-
+          <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-10">
             {activeView === 'home' && (
-              <div className="space-y-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
-                  <div className="flex-1">
-                    <div className="relative">
-                      <label htmlFor="search-input" className="sr-only">
-                        Paste a YouTube URL or search for a video
-                      </label>
-                      <input
-                        id="search-input"
-                        ref={searchInputRef}
-                        type="text"
-                        value={query}
-                        onChange={(e) => {
-                          setQuery(e.target.value);
-                          setShowSuggestions(!looksLikeUrl(e.target.value));
-                        }}
-                        onFocus={() => {
-                          if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
-                            setShowSuggestions(true);
-                          }
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            setShowSuggestions(false);
-                            suggestAbortRef.current?.abort();
-                            searchInputRef.current?.blur();
-                            void handleSearch();
-                          }
-                        }}
-                        placeholder="Paste YouTube URL or search for a video..."
-                        aria-label="Search videos or paste a YouTube URL"
-                        aria-describedby="search-help"
-                        className="h-16 w-full rounded-[1.25rem] border border-emerald-700/30 bg-zinc-950/90 px-5 pl-14 text-[15px] text-emerald-100 placeholder-emerald-600/80 shadow-[0_0_0_1px_rgba(16,185,129,0.04)] outline-none transition-[border-color,box-shadow,background-color] focus:border-emerald-500/55 focus:bg-zinc-950 focus:ring-2 focus:ring-emerald-500/20 sm:h-[68px] sm:text-[17px]"
-                      />
-                      <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-emerald-400/90" />
-                      <p id="search-help" className="sr-only">
-                        Press Enter to search.
-                      </p>
+              <>
+                <section className="relative overflow-hidden rounded-[2.25rem] border border-emerald-700/30 bg-gradient-to-br from-emerald-950/50 via-zinc-950/90 to-zinc-950/80 px-6 py-12 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:px-10 lg:px-20 lg:py-16">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_12%,rgba(16,185,129,0.12),transparent_30%),radial-gradient(circle_at_92%_10%,rgba(20,184,166,0.08),transparent_26%)]" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSuggestions(false);
+                      setActiveView('settings');
+                    }}
+                    className="absolute right-5 top-5 z-10 inline-flex items-center justify-center gap-2 rounded-[1.4rem] border border-emerald-700/35 bg-zinc-950/45 px-4 py-3 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-950/45 sm:right-8 sm:top-8 sm:text-base"
+                  >
+                    <Settings className="h-5 w-5" />
+                    Settings
+                  </button>
+
+                  <div className="relative mx-auto flex max-w-5xl flex-col items-center text-center">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">
+                      <Download className="h-4 w-4" />
+                      Video Downloader
+                    </div>
+
+                    <h1 className="mt-7 text-5xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
+                      FK Downloader
+                    </h1>
+
+                    <p className="mt-6 max-w-3xl text-lg font-semibold leading-8 text-emerald-100/65 sm:text-xl">
+                      Paste a YouTube link or search keywords, then pick the format you want. Fast conversion,
+                      simple flow, and your saved items stay close by.
+                    </p>
+
+                    <div className="mt-8 flex flex-wrap justify-center gap-3">
+                      <div className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-200">
+                        MP4
+                      </div>
+                      <div className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-200">
+                        MP3
+                      </div>
+                      <div className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-200">
+                        Fast search
+                      </div>
+                      <div className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-200">
+                        Offline saves
+                      </div>
+                    </div>
+
+                    <div className="mt-8 grid w-full max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[1.25rem] border border-emerald-700/40 bg-emerald-950/30 px-4 text-sm font-bold text-emerald-200">
+                        {isOffline ? <WifiOff className="h-4 w-4" /> : <Wifi className="h-4 w-4" />}
+                        {isOffline ? 'Offline' : 'Online'}
+                      </div>
+                      <div className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[1.25rem] border border-white/10 bg-white/7 px-4 text-sm font-bold text-emerald-100/70">
+                        <Radio className="h-4 w-4 text-emerald-300" />
+                        {status}
+                      </div>
+                      <div className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[1.25rem] border border-white/10 bg-white/7 px-4 text-sm font-bold text-emerald-100/70">
+                        <FolderOpen className="h-4 w-4 text-emerald-300" />
+                        {savedDownloads.length} saved
+                      </div>
+                      <div className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-[1.25rem] border border-white/10 bg-white/7 px-4 text-sm font-bold text-emerald-100/70">
+                        <WifiOff className="h-4 w-4 text-emerald-300" />
+                        {offlineDownloads.length} offline
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="rounded-[2rem] border border-emerald-700/25 bg-zinc-950/45 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.25)] lg:p-7">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+                    <div className="min-w-0 flex-1">
+                      <div className="relative">
+                        <label htmlFor="search-input" className="sr-only">
+                          Paste a YouTube URL or search for a video
+                        </label>
+                        <input
+                          id="search-input"
+                          ref={searchInputRef}
+                          type="text"
+                          value={query}
+                          onChange={(e) => {
+                            setQuery(e.target.value);
+                            setShowSuggestions(!looksLikeUrl(e.target.value));
+                          }}
+                          onFocus={() => {
+                            if (query.trim() && !looksLikeUrl(query) && suggestions.length > 0) {
+                              setShowSuggestions(true);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              setShowSuggestions(false);
+                              suggestAbortRef.current?.abort();
+                              searchInputRef.current?.blur();
+                              void handleSearch();
+                            }
+                          }}
+                          placeholder="Paste YouTube URL or search for a video..."
+                          aria-label="Search videos or paste a YouTube URL"
+                          aria-describedby="search-help"
+                          className="h-16 w-full rounded-[1.35rem] border border-emerald-700/35 bg-black/70 px-5 pl-14 text-[15px] text-emerald-100 placeholder-emerald-600/80 outline-none transition-[border-color,box-shadow,background-color] focus:border-emerald-500/55 focus:bg-zinc-950 focus:ring-2 focus:ring-emerald-500/20 sm:h-[72px] sm:text-[17px]"
+                        />
+                        <Search className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-emerald-400/90" />
+                        <p id="search-help" className="sr-only">
+                          Press Enter to search.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-3 lg:w-[470px] xl:w-[500px]">
+                      <button
+                        type="button"
+                        onClick={() => void handlePasteClipboard()}
+                        aria-label="Paste a link from the clipboard"
+                        className="inline-flex min-h-[64px] items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 bg-white/5 px-5 py-3 text-base font-bold text-emerald-100 transition-colors hover:bg-white/10 sm:min-h-[72px]"
+                      >
+                        <Clipboard className="h-5 w-5" />
+                        Paste
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSearch()}
+                        disabled={isSearching}
+                        aria-label="Search videos"
+                        className="inline-flex min-h-[64px] items-center justify-center rounded-[1.35rem] bg-emerald-500 px-5 py-3 text-base font-bold text-zinc-950 shadow-[0_18px_35px_rgba(16,185,129,0.22)] transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[72px]"
+                      >
+                        {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRecognize()}
+                        disabled={isRecognizing || isOffline}
+                        aria-label="Recognize music"
+                        className="inline-flex min-h-[64px] items-center justify-center gap-2 rounded-[1.35rem] border border-emerald-600/35 bg-zinc-950/70 px-5 py-3 text-base font-bold text-emerald-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[72px]"
+                      >
+                        {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
+                        Recognize
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 sm:flex-row lg:w-[338px]">
-                    <button
-                      type="button"
-                      onClick={() => void handleSearch()}
-                      disabled={isSearching}
-                      aria-label="Search videos"
-                      className="inline-flex min-h-[64px] flex-1 items-center justify-center rounded-[1.25rem] bg-emerald-500 px-6 py-3 text-base font-semibold text-zinc-950 shadow-[0_18px_35px_rgba(16,185,129,0.22)] transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSearching ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Search'}
-                    </button>
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="mt-3 max-h-64 w-full overflow-y-auto rounded-[1.5rem] border border-emerald-800/35 bg-zinc-950/95 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+                      {suggestions.map((suggestion, index) => (
+                        <li
+                          key={`${suggestion}-${index}`}
+                          onClick={() => {
+                            setQuery(suggestion);
+                            void handleSearch(suggestion);
+                          }}
+                          className="cursor-pointer px-5 py-3 text-sm text-emerald-100/85 transition-colors hover:bg-emerald-900/35 sm:text-base"
+                        >
+                          {suggestion}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleRecognize()}
-                      disabled={isRecognizing || isOffline}
-                      aria-label="Recognize music"
-                      className="inline-flex min-h-[64px] flex-1 items-center justify-center gap-2 rounded-[1.25rem] border border-emerald-600/35 bg-zinc-950/70 px-6 py-3 text-base font-semibold text-emerald-200 transition-colors hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isRecognizing ? <Loader2 className="h-5 w-5 animate-spin" /> : <Mic className="h-5 w-5" />}
-                      Recognize
-                    </button>
-                  </div>
-                </div>
-
-                {showSuggestions && suggestions.length > 0 && (
-                  <ul className="max-h-64 w-full overflow-y-auto rounded-[1.5rem] border border-emerald-800/35 bg-zinc-950/95 shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
-                    {suggestions.map((suggestion, index) => (
-                      <li
-                        key={`${suggestion}-${index}`}
-                        onClick={() => {
-                          setQuery(suggestion);
-                          void handleSearch(suggestion);
-                        }}
-                        className="cursor-pointer px-5 py-3 text-sm text-emerald-100/85 transition-colors hover:bg-emerald-900/35 sm:text-base"
-                      >
-                        {suggestion}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              </>
             )}
           </div>
         </header>
@@ -2184,6 +2246,8 @@ export default function App() {
           </div>
         )}
 
+        {!shouldShowHomeEmptyState && (
+          <>
         {!selectedVideo && (showingOfflineLibrary || showingOfflineSearchResults) && (
           <div className="rounded-2xl border border-emerald-800/30 bg-zinc-900/50 px-5 py-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
@@ -3107,9 +3171,11 @@ export default function App() {
             ))}
           </div>
         )}
+          </>
+        )}
 
-        {activeView === 'home' && !selectedVideo && visibleResults.length === 0 && !isSearching && (
-          <section className="flex min-h-[calc(100vh-14rem)] flex-1 items-center justify-center">
+        {shouldShowHomeEmptyState && (
+          <section className="mt-20 flex min-h-[calc(100vh-22rem)] flex-1 items-center justify-center sm:mt-28 lg:mt-36">
             <div className="flex flex-col items-center gap-6 text-center">
               <div className="relative">
                 <div className="absolute inset-0 rounded-full bg-emerald-500/10 blur-2xl" />

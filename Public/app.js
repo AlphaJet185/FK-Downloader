@@ -2,10 +2,13 @@ const state = {
   suggestions: [],
   results: [],
   loading: false,
+  lastSubmittedQuery: "",
+  lastSubmitAt: 0,
 };
 
 const elements = {
   input: document.getElementById("search-input"),
+  pasteButton: document.getElementById("paste-button"),
   searchButton: document.getElementById("search-button"),
   recognizeButton: document.getElementById("recognize-button"),
   suggestions: document.getElementById("suggestions"),
@@ -13,6 +16,8 @@ const elements = {
   heroCopy: document.getElementById("hero-copy"),
   statusBar: document.getElementById("status-bar"),
   resultsGrid: document.getElementById("results-grid"),
+  resultsActions: document.getElementById("results-actions"),
+  searchMoreButton: document.getElementById("search-more-button"),
   detailsPanel: document.getElementById("details-panel"),
   detailsTitle: document.getElementById("details-title"),
   detailsChannel: document.getElementById("details-channel"),
@@ -97,6 +102,7 @@ function renderSuggestions() {
 function renderResults() {
   elements.resultsGrid.innerHTML = "";
   elements.resultsGrid.hidden = state.results.length === 0;
+  elements.resultsActions.hidden = state.results.length === 0;
 
   for (const result of state.results) {
     const card = document.createElement("article");
@@ -196,13 +202,23 @@ async function searchByDirectUrl(videoId, originalQuery) {
 
 async function runSearch() {
   const query = elements.input.value.trim();
+  const now = Date.now();
+
   if (!query || state.loading) {
     return;
   }
 
+  if (state.lastSubmittedQuery === query && now - state.lastSubmitAt < 800) {
+    return;
+  }
+
+  state.lastSubmittedQuery = query;
+  state.lastSubmitAt = now;
   state.loading = true;
   state.suggestions = [];
+  clearTimeout(suggestTimer);
   renderSuggestions();
+  elements.pasteButton.disabled = true;
   elements.searchButton.disabled = true;
   elements.searchButton.textContent = "Search...";
   elements.heroEmpty.hidden = true;
@@ -229,7 +245,7 @@ async function runSearch() {
         elements.heroCopy.textContent = "No results found.";
         setStatus("Try a different search term.");
       } else {
-        setStatus(`${state.results.length} video${state.results.length === 1 ? "" : "s"} loaded.`, "success");
+        setStatus("");
       }
     }
   } catch (error) {
@@ -241,6 +257,7 @@ async function runSearch() {
     setStatus(error.message || "Search failed.", "error");
   } finally {
     state.loading = false;
+    elements.pasteButton.disabled = false;
     elements.searchButton.disabled = false;
     elements.searchButton.textContent = "Search";
   }
@@ -266,12 +283,43 @@ async function loadSuggestions() {
   }
 }
 
+async function pasteFromClipboard() {
+  if (state.loading) {
+    return;
+  }
+
+  if (!navigator.clipboard?.readText) {
+    setStatus("Clipboard paste is not available in this browser.", "error");
+    return;
+  }
+
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (!text) {
+      setStatus("Clipboard is empty.");
+      return;
+    }
+
+    elements.input.value = text;
+    elements.heroCopy.textContent = "Search for a video to get started.";
+    state.suggestions = [];
+    renderSuggestions();
+    await runSearch();
+  } catch {
+    setStatus("Clipboard access was blocked by the browser.", "error");
+  }
+}
+
+elements.pasteButton.addEventListener("click", () => {
+  void pasteFromClipboard();
+});
+
 elements.searchButton.addEventListener("click", () => {
   void runSearch();
 });
 
 elements.input.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
+  if (event.key === "Enter" && !event.repeat) {
     event.preventDefault();
     void runSearch();
   }
@@ -287,6 +335,12 @@ elements.input.addEventListener("input", () => {
 
 elements.recognizeButton.addEventListener("click", () => {
   setStatus("Recognize is not available in the static fallback client.", "error");
+});
+
+elements.searchMoreButton.addEventListener("click", () => {
+  elements.input.focus();
+  elements.input.select();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
 document.addEventListener("click", (event) => {

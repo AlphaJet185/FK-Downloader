@@ -1,4 +1,5 @@
 /* Tailwind import */
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
 @import "tailwindcss";
 
 /* Your project-specific styles */
@@ -21,11 +22,29 @@ html {
 body {
   width: 100%;
   min-height: 100vh;
-  font-family: "Segoe UI Variable Display", "Trebuchet MS", "Segoe UI", sans-serif;
+  font-family: "Manrope", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-weight: 500;
   background: transparent;
   color: #ecfdf5;
   overflow-x: hidden;
   position: relative;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Sora", "Manrope", sans-serif;
+  letter-spacing: -0.03em;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
 
 body::before {
