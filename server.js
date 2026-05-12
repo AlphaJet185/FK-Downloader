@@ -767,6 +767,10 @@ app.get("/api/info", async (req, res) => {
 app.get("/api/search", async (req, res) => {
   const rawQuery = firstArrayValue(req.query.q);
   const q = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  const rawPage = firstArrayValue(req.query.page);
+  const page = Math.max(1, Number.parseInt(String(rawPage || "1"), 10) || 1);
+  const pageSize = 10;
+  const offset = (page - 1) * pageSize;
 
   if (!q) {
     return res.status(400).json({ error: "Query required" });
@@ -791,7 +795,7 @@ app.get("/api/search", async (req, res) => {
     const html = await response.text();
     const initialData = extractInitialData(html);
     const renderers = collectVideoRenderers(initialData);
-    const videos = renderers.map(toSearchVideo).filter(Boolean).slice(0, 10);
+    const videos = renderers.map(toSearchVideo).filter(Boolean).slice(offset, offset + pageSize);
 
     return res.json(videos);
   } catch (error) {

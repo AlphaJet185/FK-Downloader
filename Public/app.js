@@ -4,6 +4,9 @@ const state = {
   loading: false,
   lastSubmittedQuery: "",
   lastSubmitAt: 0,
+  currentQuery: "",
+  currentPage: 1,
+  loadingMore: false,
 };
 
 const elements = {
@@ -18,6 +21,9 @@ const elements = {
   resultsGrid: document.getElementById("results-grid"),
   resultsActions: document.getElementById("results-actions"),
   searchMoreButton: document.getElementById("search-more-button"),
+  videoView: document.getElementById("video-view"),
+  backButton: document.getElementById("back-button"),
+  detailsLoading: document.getElementById("details-loading"),
   detailsPanel: document.getElementById("details-panel"),
   detailsTitle: document.getElementById("details-title"),
   detailsChannel: document.getElementById("details-channel"),
@@ -27,6 +33,12 @@ const elements = {
 };
 
 let suggestTimer = null;
+const SEARCH_BUTTON_LABEL = "Search";
+const SEARCH_MORE_LABEL = "Search more";
+
+function buttonLoadingMarkup(label) {
+  return `<span class="button-loader" aria-hidden="true"></span><span>${label}</span>`;
+}
 
 function formatDuration(totalSeconds) {
   const seconds = Math.max(0, Math.floor(totalSeconds || 0));
@@ -103,8 +115,29 @@ function renderResults() {
   elements.resultsGrid.innerHTML = "";
   elements.resultsGrid.hidden = state.results.length === 0;
   elements.resultsActions.hidden = state.results.length === 0;
+  elements.searchMoreButton.innerHTML = SEARCH_MORE_LABEL;
+  elements.searchMoreButton.disabled = state.loadingMore;
 
   for (const result of state.results) {
+    const card = document.createElement("article");
+    card.className = "result-card";
+    card.innerHTML = `
+      <img src="${result.thumbnail}" alt="">
+      <div class="result-copy">
+        <h3>${result.title}</h3>
+        <p>${result.channel} · ${formatDuration(result.duration)}</p>
+      </div>
+    `;
+    card.addEventListener("click", () => void loadDetails(result));
+    elements.resultsGrid.appendChild(card);
+  }
+}
+
+function appendResults(nextResults) {
+  elements.resultsGrid.hidden = nextResults.length === 0 && state.results.length === 0;
+  elements.resultsActions.hidden = nextResults.length === 0 && state.results.length === 0;
+
+  for (const result of nextResults) {
     const card = document.createElement("article");
     card.className = "result-card";
     card.innerHTML = `
@@ -141,7 +174,11 @@ function renderFormats(label, formats) {
 }
 
 function renderDetails(details) {
+  elements.videoView.hidden = false;
+  elements.detailsLoading.hidden = true;
   elements.detailsPanel.hidden = false;
+  elements.resultsGrid.hidden = true;
+  elements.resultsActions.hidden = true;
   elements.detailsTitle.textContent = details.title || "";
   elements.detailsChannel.textContent = details.channel || "";
   elements.detailsDuration.textContent = `Duration: ${formatDuration(details.duration)}`;
@@ -159,7 +196,12 @@ function renderDetails(details) {
 }
 
 async function loadDetails(result) {
-  setStatus("Loading video details...");
+  setStatus("");
+  elements.videoView.hidden = false;
+  elements.detailsLoading.hidden = false;
+  elements.detailsPanel.hidden = true;
+  elements.resultsGrid.hidden = true;
+  elements.resultsActions.hidden = true;
 
   try {
     const response = await fetch(`/api/info?url=${encodeURIComponent(result.url)}`);
@@ -169,8 +211,10 @@ async function loadDetails(result) {
     }
 
     renderDetails(payload);
-    setStatus("Video details loaded.", "success");
+    setStatus("");
   } catch (error) {
+    elements.videoView.hidden = true;
+    elements.detailsLoading.hidden = true;
     setStatus(error.message || "Failed to load details.", "error");
   }
 }
@@ -214,15 +258,18 @@ async function runSearch() {
 
   state.lastSubmittedQuery = query;
   state.lastSubmitAt = now;
+  state.currentQuery = query;
+  state.currentPage = 1;
   state.loading = true;
+  state.loadingMore = false;
   state.suggestions = [];
   clearTimeout(suggestTimer);
   renderSuggestions();
   elements.pasteButton.disabled = true;
   elements.searchButton.disabled = true;
-  elements.searchButton.textContent = "Search...";
+  elements.searchButton.innerHTML = buttonLoadingMarkup(SEARCH_BUTTON_LABEL);
   elements.heroEmpty.hidden = true;
-  elements.detailsPanel.hidden = true;
+  elements.videoView.hidden = true;
   setStatus("Searching...");
 
   try {
@@ -231,7 +278,7 @@ async function runSearch() {
     if (videoId) {
       await searchByDirectUrl(videoId, query);
     } else {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&page=1`);
       const payload = await response.json();
       if (!response.ok) {
         throw new Error(payload?.error || "Search failed.");
@@ -251,7 +298,7 @@ async function runSearch() {
   } catch (error) {
     state.results = [];
     renderResults();
-    elements.detailsPanel.hidden = true;
+    elements.videoView.hidden = true;
     elements.heroEmpty.hidden = false;
     elements.heroCopy.textContent = "Search for a video to get started.";
     setStatus(error.message || "Search failed.", "error");
@@ -259,7 +306,49 @@ async function runSearch() {
     state.loading = false;
     elements.pasteButton.disabled = false;
     elements.searchButton.disabled = false;
-    elements.searchButton.textContent = "Search";
+    elements.searchButton.innerHTML = SEARCH_BUTTON_LABEL;
+  }
+}
+
+async function loadMoreResults() {
+  if (state.loading || state.loadingMore || !state.currentQuery) {
+    return;
+  }
+
+  state.loadingMore = true;
+  elements.searchMoreButton.disabled = true;
+  elements.searchMoreButton.innerHTML = buttonLoadingMarkup(SEARCH_MORE_LABEL);
+  setStatus("");
+
+  try {
+    const nextPage = state.currentPage + 1;
+    const response = await fetch(
+      `/api/search?q=${encodeURIComponent(state.currentQuery)}&page=${encodeURIComponent(String(nextPage))}`
+    );
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload?.error || "Search failed.");
+    }
+
+    const nextResults = Array.isArray(payload) ? payload : [];
+    if (nextResults.length === 0) {
+      elements.searchMoreButton.innerHTML = "No more videos";
+      elements.searchMoreButton.disabled = true;
+      return;
+    }
+
+    state.currentPage = nextPage;
+    state.results = [...state.results, ...nextResults];
+    appendResults(nextResults);
+    elements.searchMoreButton.innerHTML = SEARCH_MORE_LABEL;
+    elements.searchMoreButton.disabled = false;
+  } catch (error) {
+    elements.searchMoreButton.innerHTML = SEARCH_MORE_LABEL;
+    elements.searchMoreButton.disabled = false;
+    setStatus(error.message || "Failed to load more videos.", "error");
+  } finally {
+    state.loadingMore = false;
   }
 }
 
@@ -338,9 +427,15 @@ elements.recognizeButton.addEventListener("click", () => {
 });
 
 elements.searchMoreButton.addEventListener("click", () => {
-  elements.input.focus();
-  elements.input.select();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  void loadMoreResults();
+});
+
+elements.backButton.addEventListener("click", () => {
+  elements.videoView.hidden = true;
+  elements.detailsLoading.hidden = true;
+  elements.resultsGrid.hidden = state.results.length === 0;
+  elements.resultsActions.hidden = state.results.length === 0;
+  setStatus("");
 });
 
 document.addEventListener("click", (event) => {
