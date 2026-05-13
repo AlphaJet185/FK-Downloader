@@ -2170,7 +2170,7 @@ export default function App() {
           </div>
         )}
 
-        {activeView === 'settings' && (
+        {activeView !== 'settings' && (
           <>
         {isOffline && (
           <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 px-5 py-4 text-left">
@@ -2588,20 +2588,20 @@ export default function App() {
                         <SkipBack className="h-4 w-4" />
                       </button>
                       <span className="font-mono text-xs text-emerald-400">-10s</span>
-                      <button
-                        type="button"
-                        onClick={() => void toggleSavedPreviewPlayback()}
-                        disabled={isSavedPreviewLoading}
-                        className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
-                      >
-                        {isSavedPreviewLoading ? (
-                          <Loader2 className="h-5 w-5 animate-spin" />
-                        ) : isSavedPreviewPlaying ? (
-                          <Pause className="h-5 w-5" />
-                        ) : (
-                          <Play className="ml-0.5 h-5 w-5" />
-                        )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleSavedPreviewPlayback()}
+                          disabled={isSavedPreviewLoading}
+                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
+                        >
+                          {isSavedPreviewLoading ? (
+                            <Loader2 className="h-5 w-5 animate-spin" />
+                          ) : isSavedPreviewPlaying ? (
+                          <span className="font-mono text-lg font-bold leading-none">||</span>
+                          ) : (
+                          <span className="font-mono text-lg font-bold leading-none">|&gt;</span>
+                          )}
+                        </button>
                       <span className="font-mono text-xs text-emerald-400">+10s</span>
                       <button
                         type="button"
@@ -2782,7 +2782,7 @@ export default function App() {
                                 Recommended for local playback and sharing
                               </div>
                             </div>
-                            <Download className="h-5 w-5 text-emerald-200" />
+                            <span className="text-xs font-semibold text-emerald-200">Download</span>
                           </button>
 
                           <button
@@ -2831,10 +2831,7 @@ export default function App() {
                                 {isOffline ? (
                                   'Offline'
                                 ) : downloadState?.key === `audio-${format.itag}` ? (
-                                  <span className="flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
-                                  </span>
+                                  downloadState.phase === 'saving' ? 'Saving' : 'Downloading'
                                 ) : (
                                   'Download'
                                 )}
@@ -2875,10 +2872,7 @@ export default function App() {
                                 {isOffline ? (
                                   'Offline'
                                 ) : downloadState?.key === `video-${format.itag}` ? (
-                                  <span className="flex items-center gap-2">
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                    {downloadState.phase === 'saving' ? 'Saving' : 'Downloading'}
-                                  </span>
+                                  downloadState.phase === 'saving' ? 'Saving' : 'Downloading'
                                 ) : (
                                   'Download'
                                 )}
@@ -2898,13 +2892,6 @@ export default function App() {
                           disabled={Boolean(downloadState) || isOffline}
                           className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          {isOffline ? (
-                            <WifiOff className="h-4 w-4" />
-                          ) : downloadState?.key === 'quick-download' ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
                           {isOffline
                             ? 'Offline'
                             : downloadState?.key === 'quick-download'
@@ -3040,9 +3027,9 @@ export default function App() {
                           {isPreviewLoading ? (
                             <Loader2 className="h-5 w-5 animate-spin" />
                           ) : isPreviewPlaying ? (
-                            <Pause className="h-5 w-5" />
+                            <span className="font-mono text-lg font-bold leading-none">||</span>
                           ) : (
-                            <Play className="ml-0.5 h-5 w-5" />
+                            <span className="font-mono text-lg font-bold leading-none">|&gt;</span>
                           )}
                         </button>
                         <span className="font-mono text-xs text-emerald-400">
