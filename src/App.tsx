@@ -15,7 +15,6 @@ import {
   Loader2,
   Mic,
   MessageSquare,
-  Maximize2,
   Music,
   Info,
   Pause,
@@ -241,6 +240,27 @@ function getFormatLabel(format: FormatOption) {
   }
 
   return getFormatFileType(format).toUpperCase() || 'AUDIO';
+}
+
+function getFormatContainer(format: FormatOption) {
+  const subtype = format.mimeType?.split('/')[1]?.split(';')[0]?.trim().toLowerCase();
+
+  if (!subtype) return '';
+  if (subtype === 'mpeg') return 'mp3';
+  if (subtype === 'x-m4a') return 'm4a';
+
+  return subtype;
+}
+
+function getFormatCodecBadges(format: FormatOption) {
+  const container = getFormatContainer(format);
+  const codecMatch = format.mimeType?.match(/codecs="([^"]+)"/i);
+  const codecs = codecMatch?.[1]
+    ?.split(',')
+    .map((codec) => codec.trim().split('.')[0])
+    .filter(Boolean);
+
+  return [container, ...(codecs || [])].filter((value, index, values) => value && values.indexOf(value) === index);
 }
 
 function clampPlaybackTime(nextTime: number, duration: number) {
@@ -1430,20 +1450,6 @@ export default function App() {
     setSavedPreviewDuration(duration);
   };
 
-  const jumpPreviewBy = (deltaSeconds: number) => {
-    const player = previewVideoRef.current;
-    if (!player) return;
-
-    updatePreviewPosition((player.currentTime || 0) + deltaSeconds);
-  };
-
-  const jumpSavedPreviewBy = (deltaSeconds: number) => {
-    const player = savedPreviewVideoRef.current;
-    if (!player) return;
-
-    updateSavedPreviewPosition((player.currentTime || 0) + deltaSeconds);
-  };
-
   const handlePreviewScrub = (event: React.ChangeEvent<HTMLInputElement>) => {
     updatePreviewPosition(Number(event.target.value));
   };
@@ -2571,60 +2577,41 @@ export default function App() {
                         )}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-center gap-7 rounded-lg bg-zinc-900/75 px-4 py-3">
                       <button
                         type="button"
                         onClick={handlePreviousSavedDownload}
                         disabled={!previousSavedDownload}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label="Previous saved preview"
                       >
-                        <ChevronLeft className="h-4 w-4" />
+                        <SkipBack className="h-5 w-5 fill-current" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => jumpSavedPreviewBy(-10)}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                        onClick={() => void toggleSavedPreviewPlayback()}
+                        disabled={isSavedPreviewLoading}
+                        className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-80"
+                        aria-label={isSavedPreviewPlaying ? 'Pause saved preview' : 'Play saved preview'}
                       >
-                        <SkipBack className="h-4 w-4" />
-                      </button>
-                      <span className="font-mono text-xs text-emerald-400">-10s</span>
-                        <button
-                          type="button"
-                          onClick={() => void toggleSavedPreviewPlayback()}
-                          disabled={isSavedPreviewLoading}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
-                        >
+                        <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
                           {isSavedPreviewLoading ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
+                            <Loader2 className="h-6 w-6 animate-spin" />
                           ) : isSavedPreviewPlaying ? (
-                          <span className="font-mono text-lg font-bold leading-none">||</span>
+                            <Pause className="h-7 w-7" />
                           ) : (
-                          <span className="font-mono text-lg font-bold leading-none">|&gt;</span>
+                            <Play className="ml-1 h-7 w-7 fill-current" />
                           )}
-                        </button>
-                      <span className="font-mono text-xs text-emerald-400">+10s</span>
-                      <button
-                        type="button"
-                        onClick={() => jumpSavedPreviewBy(10)}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
-                      >
-                        <SkipForward className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void toggleFullscreen(savedPreviewPanelRef.current)}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
-                        aria-label="Fullscreen saved preview"
-                      >
-                        <Maximize2 className="h-4 w-4" />
+                        </span>
                       </button>
                       <button
                         type="button"
                         onClick={handleNextSavedDownload}
                         disabled={!nextSavedDownload}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                        aria-label="Next saved preview"
                       >
-                        <ChevronRight className="h-4 w-4" />
+                        <SkipForward className="h-5 w-5 fill-current" />
                       </button>
                     </div>
                   </div>
@@ -2803,84 +2790,117 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
-                        <h3 className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
-                          Audio
-                        </h3>
-                        <div className="space-y-2 p-3">
+                      <div className="overflow-hidden rounded-xl border border-emerald-800/30 bg-zinc-950/40">
+                        <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] border-b border-emerald-800/30 bg-zinc-950/80 px-3 py-3 text-sm font-bold text-emerald-100">
+                          <div className="col-span-3 flex items-center gap-2">
+                            <Music className="h-4 w-4" />
+                            Audio
+                          </div>
+                        </div>
+                        <div className="divide-y divide-emerald-900/35">
                           {(videoDetails?.audioFormats || []).slice(0, 6).map((format) => (
                             <div
                               key={`audio-${format.itag}-${format.url}`}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-900/40 bg-zinc-900/70 px-3 py-3"
+                              className="grid min-h-[68px] grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] items-center gap-3 bg-zinc-900/45 px-3 py-2 text-center transition-colors hover:bg-zinc-900/80"
                             >
-                              <div>
-                                <div className="text-sm font-semibold text-emerald-100">
+                              <div className="text-left">
+                                <div className="text-sm font-semibold text-emerald-100 sm:text-base">
                                   {getFormatLabel(format)}
                                 </div>
-                                <div className="text-xs text-emerald-500">
-                                  {format.contentLength}
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {getFormatCodecBadges(format).map((badge) => (
+                                    <span
+                                      key={`${format.itag}-${badge}`}
+                                      className="rounded bg-emerald-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-zinc-950"
+                                    >
+                                      {badge}
+                                    </span>
+                                  ))}
                                 </div>
+                              </div>
+                              <div className="text-sm font-medium text-emerald-100/80 sm:text-base">
+                                {format.contentLength || 'Unknown'}
                               </div>
                               <button
                                 type="button"
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
                                 aria-label={`Download audio format ${getFormatLabel(format)}`}
-                                className="min-h-[48px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
                               >
                                 {isOffline ? (
                                   'Offline'
                                 ) : downloadState?.key === `audio-${format.itag}` ? (
                                   downloadState.phase === 'saving' ? 'Saving' : 'Downloading'
                                 ) : (
-                                  'Download'
+                                  <>
+                                    <Download className="h-4 w-4" />
+                                    Download
+                                  </>
                                 )}
                               </button>
                             </div>
                           ))}
                           {!videoDetails?.audioFormats?.length && (
-                            <div className="text-sm text-emerald-500">No audio-only formats found.</div>
+                            <div className="px-3 py-4 text-sm text-emerald-500">No audio-only formats found.</div>
                           )}
                         </div>
-                      </div>
 
-                      <div className="rounded-xl border border-emerald-800/30 bg-zinc-950/40">
-                        <h3 className="border-b border-emerald-800/30 px-4 py-3 text-sm font-semibold text-emerald-300">
-                          Video
-                        </h3>
-                        <div className="space-y-2 p-3">
+                        <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] border-y border-emerald-800/30 bg-zinc-950/80 px-3 py-3 text-sm font-bold text-emerald-100">
+                          <div className="col-span-3 flex items-center gap-2">
+                            <Video className="h-4 w-4" />
+                            Video
+                          </div>
+                        </div>
+                        <div className="divide-y divide-emerald-900/35">
                           {(videoDetails?.videoFormats || []).slice(0, 8).map((format) => (
                             <div
                               key={`video-${format.itag}-${format.url}`}
-                              className="flex items-center justify-between gap-3 rounded-lg border border-emerald-900/40 bg-zinc-900/70 px-3 py-3"
+                              className="grid min-h-[68px] grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] items-center gap-3 bg-zinc-900/45 px-3 py-2 text-center transition-colors hover:bg-zinc-900/80"
                             >
-                              <div>
-                                <div className="text-sm font-semibold text-emerald-100">
+                              <div className="text-left">
+                                <div className="text-sm font-semibold text-emerald-100 sm:text-base">
                                   {getFormatLabel(format)}
+                                  {format.hasAudio ? <span className="ml-1 text-emerald-300">♪</span> : null}
                                 </div>
-                                <div className="text-xs text-emerald-500">
-                                  {format.contentLength}
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {getFormatCodecBadges(format).map((badge) => (
+                                    <span
+                                      key={`${format.itag}-${badge}`}
+                                      className={`rounded px-1.5 py-0.5 text-[11px] font-bold leading-none text-white ${
+                                        badge === 'av01' ? 'bg-orange-500' : 'bg-emerald-500'
+                                      }`}
+                                    >
+                                      {badge}
+                                    </span>
+                                  ))}
                                 </div>
+                              </div>
+                              <div className="text-sm font-medium text-emerald-100/80 sm:text-base">
+                                {format.contentLength || 'Unknown'}
                               </div>
                               <button
                                 type="button"
                                 onClick={() => void handleFormatDownload(format)}
                                 disabled={Boolean(downloadState) || isOffline}
                                 aria-label={`Download video format ${getFormatLabel(format)}`}
-                                className="min-h-[48px] rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-zinc-950 transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex min-h-[46px] items-center justify-center gap-2 rounded bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 sm:text-base"
                               >
                                 {isOffline ? (
                                   'Offline'
                                 ) : downloadState?.key === `video-${format.itag}` ? (
                                   downloadState.phase === 'saving' ? 'Saving' : 'Downloading'
                                 ) : (
-                                  'Download'
+                                  <>
+                                    <Download className="h-4 w-4" />
+                                    Download
+                                  </>
                                 )}
                               </button>
                             </div>
                           ))}
                           {!videoDetails?.videoFormats?.length && (
-                            <div className="text-sm text-emerald-500">No video formats found.</div>
+                            <div className="px-3 py-4 text-sm text-emerald-500">No video formats found.</div>
                           )}
                         </div>
                       </div>
@@ -2999,66 +3019,43 @@ export default function App() {
                           )}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-center gap-7 rounded-lg bg-zinc-900/75 px-4 py-3">
                         <button
                           type="button"
                           onClick={handlePreviousVideo}
                           disabled={!previousVideo}
-                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Previous preview"
                         >
-                          <ChevronLeft className="h-4 w-4" />
+                          <SkipBack className="h-5 w-5 fill-current" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => jumpPreviewBy(-10)}
-                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
-                        >
-                          <SkipBack className="h-4 w-4" />
-                        </button>
-                        <span className="font-mono text-xs text-emerald-400">
-                          -10s
-                        </span>
                         <button
                           type="button"
                           onClick={() => void togglePreviewPlayback()}
                           disabled={isPreviewLoading}
-                          className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
+                          className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-80"
+                          aria-label={isPreviewPlaying ? 'Pause preview' : 'Play preview'}
                         >
-                          {isPreviewLoading ? (
-                            <Loader2 className="h-5 w-5 animate-spin" />
-                          ) : isPreviewPlaying ? (
-                            <span className="font-mono text-lg font-bold leading-none">||</span>
-                          ) : (
-                            <span className="font-mono text-lg font-bold leading-none">|&gt;</span>
-                          )}
+                          <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
+                            {isPreviewLoading ? (
+                              <Loader2 className="h-6 w-6 animate-spin" />
+                            ) : isPreviewPlaying ? (
+                              <Pause className="h-7 w-7" />
+                            ) : (
+                              <Play className="ml-1 h-7 w-7 fill-current" />
+                            )}
+                          </span>
                         </button>
-                        <span className="font-mono text-xs text-emerald-400">
-                          +10s
-                        </span>
                         <button
                           type="button"
-                          onClick={() => jumpPreviewBy(10)}
-                          className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
+                          onClick={handleNextVideo}
+                          disabled={!nextVideo}
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                          aria-label="Next preview"
                         >
-                          <SkipForward className="h-4 w-4" />
+                          <SkipForward className="h-5 w-5 fill-current" />
                         </button>
-                      <button
-                        type="button"
-                        onClick={handleNextVideo}
-                        disabled={!nextVideo}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void toggleFullscreen(previewPanelRef.current)}
-                        className="rounded-full border border-zinc-700 bg-zinc-900 p-2 text-emerald-200 transition-colors hover:bg-zinc-800"
-                        aria-label="Fullscreen preview"
-                      >
-                        <Maximize2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
