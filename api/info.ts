@@ -64,7 +64,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const sourceUrl = info.webpage_url || info.original_url || url;
     const playbackFormats = (info.formats || [])
-      .filter((format: any) => format?.url && format.ext !== 'webm')
+      .filter((format: any) => format?.url)
       .map((format: any) => ({
         itag: String(format.format_id || ''),
         qualityLabel: buildQualityLabel(format),
@@ -87,14 +87,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
         .filter(
           (format: any) =>
             !format.hasVideo &&
-            format.hasAudio &&
-            (format.mimeType?.includes('m4a') || format.mimeType?.includes('mp4'))
+            format.hasAudio
         )
         .sort((a: any, b: any) => (b.bitrate || 0) - (a.bitrate || 0)),
-      (format: any) => `${Math.round(format.bitrate || 0)}-${format.mimeType || ''}`
+      (format: any) => `${format.itag}-${Math.round(format.bitrate || 0)}-${format.mimeType || ''}`
     ).map((format: any) => ({
       ...format,
-      mimeType: 'audio/mp4',
       url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp4&itag=${encodeURIComponent(format.itag)}`
     }));
 
@@ -118,16 +116,16 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       playbackFormats
         .filter(
           (format: any) =>
-            format.hasVideo &&
-            format.hasAudio &&
-            format.mimeType?.includes('mp4')
+            format.hasVideo
         )
         .sort((a: any, b: any) => {
+          const audioDiff = Number(b.hasAudio) - Number(a.hasAudio);
+          if (audioDiff !== 0) return audioDiff;
           const heightDiff = (b.height || 0) - (a.height || 0);
           if (heightDiff !== 0) return heightDiff;
           return (b.bitrate || 0) - (a.bitrate || 0);
         }),
-      (format: any) => `${format.height || format.qualityLabel}-${format.mimeType || ''}`
+      (format: any) => `${format.itag}-${format.height || format.qualityLabel}-${format.mimeType || ''}-${format.hasAudio}`
     ).map((format: any) => ({
       ...format,
       url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(format.itag)}`

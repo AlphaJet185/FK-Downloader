@@ -8,6 +8,9 @@ const state = {
   currentQuery: "",
   currentPage: 1,
   loadingMore: false,
+  selectedResult: null,
+  embedCurrentTime: 0,
+  embedPlaying: false,
 };
 
 const elements = {
@@ -29,14 +32,17 @@ const elements = {
   detailsTitle: document.getElementById("details-title"),
   detailsChannel: document.getElementById("details-channel"),
   detailsDuration: document.getElementById("details-duration"),
+  detailsEmbed: document.getElementById("details-embed"),
   detailsPlayer: document.getElementById("details-player"),
   detailsAudioPlayer: document.getElementById("details-audio-player"),
   detailsPreviewCard: document.getElementById("details-preview-card"),
   videoControls: document.getElementById("video-controls"),
   videoSeek: document.getElementById("video-seek"),
   videoPlayToggle: document.getElementById("video-play-toggle"),
+  videoPrevious: document.getElementById("video-previous"),
   videoBackward: document.getElementById("video-backward"),
   videoForward: document.getElementById("video-forward"),
+  videoNext: document.getElementById("video-next"),
   videoTime: document.getElementById("video-time"),
   videoFullscreen: document.getElementById("video-fullscreen"),
   detailsThumbnail: document.getElementById("details-thumbnail"),
@@ -137,7 +143,77 @@ function buildPreviewUrl(url) {
   return url.includes("?") ? `${url}&preview=1` : `${url}?preview=1`;
 }
 
+function youtubeEmbedUrl(videoId) {
+  return `https://www.youtube.com/embed/${encodeURIComponent(
+    videoId
+  )}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
+}
+
+function sendYouTubeCommand(func, args = []) {
+  elements.detailsEmbed.contentWindow?.postMessage(
+    JSON.stringify({
+      event: "command",
+      func,
+      args,
+    }),
+    "*",
+  );
+}
+
+function syncEmbedListening() {
+  elements.detailsEmbed.contentWindow?.postMessage(
+    JSON.stringify({
+      event: "listening",
+      id: "fk-local-embed-player",
+    }),
+    "*",
+  );
+  sendYouTubeCommand("getCurrentTime");
+  sendYouTubeCommand("getPlayerState");
+}
+
+window.addEventListener("message", (event) => {
+  if (!String(event.origin).includes("youtube.com")) {
+    return;
+  }
+
+  let payload = event.data;
+  if (typeof payload === "string") {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
+      return;
+    }
+  }
+
+  if (payload?.event !== "infoDelivery" || !payload.info) {
+    return;
+  }
+
+  if (typeof payload.info.currentTime === "number") {
+    state.embedCurrentTime = payload.info.currentTime;
+  }
+
+  if (typeof payload.info.playerState === "number") {
+    state.embedPlaying = payload.info.playerState === 1;
+    elements.videoPlayToggle.classList.toggle("is-playing", state.embedPlaying);
+    elements.videoPlayToggle.textContent = state.embedPlaying ? "Pause" : "Play";
+  }
+});
+
+window.setInterval(() => {
+  if (!elements.detailsEmbed.hidden) {
+    sendYouTubeCommand("getCurrentTime");
+    sendYouTubeCommand("getPlayerState");
+  }
+}, 1000);
+
 function resetDetailsPreview() {
+  elements.detailsEmbed.removeAttribute("src");
+  elements.detailsEmbed.hidden = true;
+  state.embedCurrentTime = 0;
+  state.embedPlaying = false;
+
   elements.detailsPlayer.pause();
   elements.detailsPlayer.removeAttribute("src");
   elements.detailsPlayer.load();
@@ -147,6 +223,7 @@ function resetDetailsPreview() {
   elements.videoSeek.max = "100";
   elements.videoTime.textContent = "0:00 / 0:00";
   elements.videoPlayToggle.textContent = "Play";
+  elements.videoPlayToggle.classList.remove("is-playing");
 
   elements.detailsAudioPlayer.pause();
   elements.detailsAudioPlayer.removeAttribute("src");
@@ -167,6 +244,34 @@ function createActionButton(label, className, onClick) {
   return button;
 }
 
+function getFormatLabel(format, fallbackLabel) {
+  if (format.qualityLabel) return format.qualityLabel;
+  if (format.bitrate) return `${format.bitrate}k`;
+
+  return format.mimeType || fallbackLabel || "Format";
+}
+
+function getFormatContainer(format) {
+  const subtype = format.mimeType?.split("/")?.[1]?.split(";")?.[0]?.trim()?.toLowerCase();
+
+  if (!subtype) return "";
+  if (subtype === "mpeg") return "mp3";
+  if (subtype === "x-m4a") return "m4a";
+
+  return subtype;
+}
+
+function getFormatCodecBadges(format) {
+  const container = getFormatContainer(format);
+  const codecMatch = format.mimeType?.match(/codecs="([^"]+)"/i);
+  const codecs = codecMatch?.[1]
+    ?.split(",")
+    .map((codec) => codec.trim().split(".")[0])
+    .filter(Boolean);
+
+  return [container, ...(codecs || [])].filter((value, index, values) => value && values.indexOf(value) === index);
+}
+
 function playFormat(format) {
   const previewUrl = buildPreviewUrl(format.url);
   const mimeType = format.mimeType || "";
@@ -183,6 +288,7 @@ function playFormat(format) {
   player.src = previewUrl;
   player.load();
   void player.play().catch(() => {});
+  elements.detailsEmbed.hidden = true;
   elements.detailsThumbnail.hidden = true;
   elements.videoControls.hidden = isAudio;
 }
@@ -199,6 +305,7 @@ function renderPreviewActions(details) {
         elements.detailsAudioPlayer.removeAttribute("src");
         elements.detailsAudioPlayer.load();
         elements.detailsAudioPlayer.hidden = true;
+        elements.detailsEmbed.hidden = true;
         elements.detailsPlayer.hidden = false;
         elements.detailsPlayer.src = details.previewUrl;
         elements.detailsPlayer.load();
@@ -219,6 +326,7 @@ function renderPreviewActions(details) {
       elements.detailsPlayer.load();
       elements.detailsPlayer.hidden = true;
       elements.videoControls.hidden = true;
+      elements.detailsEmbed.hidden = true;
       elements.detailsAudioPlayer.pause();
       elements.detailsAudioPlayer.removeAttribute("src");
       elements.detailsAudioPlayer.load();
@@ -274,43 +382,42 @@ function appendResults(nextResults) {
 function renderFormats(label, formats) {
   const section = document.createElement("section");
   section.className = "format-group";
-  section.innerHTML = `<h3>${label}</h3>`;
+  section.innerHTML = `<h3>${label === "Audio" ? "♫" : "▣"} ${label}</h3>`;
   const list = document.createElement("div");
   list.className = "format-list";
 
   for (const format of formats) {
-    const card = document.createElement("article");
-    card.className = "format-card";
+    const row = document.createElement("article");
+    row.className = "format-row";
 
     const meta = document.createElement("div");
-    meta.className = "format-card-meta";
+    meta.className = "format-row-meta";
+    const badges = getFormatCodecBadges(format)
+      .map((badge) => `<span class="format-badge ${badge === "av01" ? "format-badge-warn" : ""}">${badge}</span>`)
+      .join("");
     meta.innerHTML = `
-      <div>
-        <strong>${format.qualityLabel || format.mimeType || "Format"}</strong>
-        <span>${format.mimeType || label}</span>
-      </div>
-      <span>${format.contentLength || ""}</span>
+      <strong>${getFormatLabel(format, label)}${format.hasAudio && label === "Video" ? " ♫" : ""}</strong>
+      <div class="format-badges">${badges || `<span class="format-badge">${label.toLowerCase()}</span>`}</div>
     `;
 
-    const actions = document.createElement("div");
-    actions.className = "format-card-actions";
-
-    const playButton = createActionButton(
-      "Play",
-      "ghost-button format-action",
-      () => playFormat(format),
-    );
+    const size = document.createElement("div");
+    size.className = "format-row-size";
+    size.textContent = format.contentLength || "Unknown";
 
     const downloadLink = document.createElement("a");
     downloadLink.className = "primary-button format-action";
     downloadLink.href = format.url;
-    downloadLink.textContent = "Download";
+    downloadLink.innerHTML = `
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4"></path>
+      </svg>
+      <span>Download</span>
+    `;
 
-    actions.appendChild(playButton);
-    actions.appendChild(downloadLink);
-    card.appendChild(meta);
-    card.appendChild(actions);
-    list.appendChild(card);
+    row.appendChild(meta);
+    row.appendChild(size);
+    row.appendChild(downloadLink);
+    list.appendChild(row);
   }
 
   section.appendChild(list);
@@ -318,6 +425,7 @@ function renderFormats(label, formats) {
 }
 
 function renderDetails(details) {
+  state.selectedResult = state.selectedResult ? { ...state.selectedResult, ...details } : details;
   elements.videoView.hidden = false;
   elements.detailsLoading.hidden = true;
   elements.detailsPanel.hidden = false;
@@ -327,21 +435,27 @@ function renderDetails(details) {
   elements.detailsChannel.textContent = details.channel || "";
   elements.detailsDuration.textContent = `Duration: ${formatDuration(details.duration)}`;
   resetDetailsPreview();
+  elements.detailsEmbed.src = youtubeEmbedUrl(details.id || extractYouTubeVideoId(details.url || ""));
+  elements.detailsEmbed.hidden = false;
+  elements.detailsEmbed.addEventListener("load", syncEmbedListening, { once: true });
+  elements.videoControls.hidden = false;
+  elements.detailsThumbnail.hidden = true;
   elements.detailsThumbnail.src = details.thumbnail || "";
   elements.detailsThumbnail.alt = details.title || "Video thumbnail";
   renderPreviewActions(details);
   elements.formatGroups.innerHTML = "";
 
   if (details.videoFormats?.length) {
-    elements.formatGroups.appendChild(renderFormats("Video", details.videoFormats.slice(0, 4)));
+    elements.formatGroups.appendChild(renderFormats("Video", details.videoFormats));
   }
 
   if (details.audioFormats?.length) {
-    elements.formatGroups.appendChild(renderFormats("Audio", details.audioFormats.slice(0, 4)));
+    elements.formatGroups.appendChild(renderFormats("Audio", details.audioFormats));
   }
 }
 
 async function loadDetails(result) {
+  state.selectedResult = result;
   setStatus("");
   elements.videoView.hidden = false;
   elements.detailsLoading.hidden = false;
@@ -598,6 +712,10 @@ elements.input.addEventListener("keydown", (event) => {
     if (state.activeSuggestionIndex >= 0 && state.suggestions[state.activeSuggestionIndex]) {
       elements.input.value = state.suggestions[state.activeSuggestionIndex];
     }
+    state.suggestions = [];
+    state.activeSuggestionIndex = -1;
+    renderSuggestions();
+    elements.input.blur();
     void runSearch();
   }
 });
@@ -620,6 +738,15 @@ elements.searchMoreButton.addEventListener("click", () => {
 });
 
 function syncVideoControls() {
+  if (!elements.detailsEmbed.hidden) {
+    elements.videoSeek.max = "100";
+    elements.videoSeek.value = "0";
+    elements.videoTime.textContent = "";
+    elements.videoPlayToggle.textContent = state.embedPlaying ? "Pause" : "Play";
+    elements.videoPlayToggle.classList.toggle("is-playing", state.embedPlaying);
+    return;
+  }
+
   const duration = Number.isFinite(elements.detailsPlayer.duration)
     ? elements.detailsPlayer.duration
     : 0;
@@ -631,9 +758,17 @@ function syncVideoControls() {
   elements.videoSeek.value = String(Math.min(currentTime, duration || currentTime || 0));
   elements.videoTime.textContent = `${formatPlaybackTime(currentTime)} / ${formatPlaybackTime(duration)}`;
   elements.videoPlayToggle.textContent = elements.detailsPlayer.paused ? "Play" : "Pause";
+  elements.videoPlayToggle.classList.toggle("is-playing", !elements.detailsPlayer.paused);
 }
 
 elements.videoPlayToggle.addEventListener("click", () => {
+  if (!elements.detailsEmbed.hidden) {
+    sendYouTubeCommand(state.embedPlaying ? "pauseVideo" : "playVideo");
+    state.embedPlaying = !state.embedPlaying;
+    syncVideoControls();
+    return;
+  }
+
   if (!elements.detailsPlayer.src) {
     return;
   }
@@ -646,18 +781,52 @@ elements.videoPlayToggle.addEventListener("click", () => {
   elements.detailsPlayer.pause();
 });
 
+elements.videoPrevious.addEventListener("click", () => {
+  const currentIndex = state.selectedResult
+    ? state.results.findIndex((result) => result.id === state.selectedResult.id)
+    : -1;
+  if (currentIndex > 0) {
+    void loadDetails(state.results[currentIndex - 1]);
+  }
+});
+
 elements.videoBackward.addEventListener("click", () => {
+  if (!elements.detailsEmbed.hidden) {
+    state.embedCurrentTime = Math.max(0, state.embedCurrentTime - 10);
+    sendYouTubeCommand("seekTo", [state.embedCurrentTime, true]);
+    return;
+  }
+
   elements.detailsPlayer.currentTime = Math.max(0, elements.detailsPlayer.currentTime - 10);
 });
 
 elements.videoForward.addEventListener("click", () => {
+  if (!elements.detailsEmbed.hidden) {
+    state.embedCurrentTime = Math.max(0, state.embedCurrentTime + 10);
+    sendYouTubeCommand("seekTo", [state.embedCurrentTime, true]);
+    return;
+  }
+
   const duration = Number.isFinite(elements.detailsPlayer.duration)
     ? elements.detailsPlayer.duration
     : elements.detailsPlayer.currentTime + 10;
   elements.detailsPlayer.currentTime = Math.min(duration, elements.detailsPlayer.currentTime + 10);
 });
 
+elements.videoNext.addEventListener("click", () => {
+  const currentIndex = state.selectedResult
+    ? state.results.findIndex((result) => result.id === state.selectedResult.id)
+    : -1;
+  if (currentIndex >= 0 && currentIndex < state.results.length - 1) {
+    void loadDetails(state.results[currentIndex + 1]);
+  }
+});
+
 elements.videoSeek.addEventListener("input", () => {
+  if (!elements.detailsEmbed.hidden) {
+    return;
+  }
+
   const nextTime = Number(elements.videoSeek.value);
   if (Number.isFinite(nextTime)) {
     elements.detailsPlayer.currentTime = nextTime;

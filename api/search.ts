@@ -105,6 +105,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return res.status(400).json({ error: 'Query required' });
   }
 
+  const rawPage = Array.isArray(req.query.page) ? req.query.page[0] : req.query.page;
+  const page = Math.max(1, Number.parseInt(String(rawPage || '1'), 10) || 1);
+  const pageSize = 10;
+  const offset = (page - 1) * pageSize;
+
   try {
     const response = await fetch(
       `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}&hl=en`,
@@ -127,7 +132,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const videos = renderers
       .map(toSearchVideo)
       .filter((video): video is SearchVideo => Boolean(video))
-      .slice(0, 10);
+      .slice(offset, offset + pageSize);
 
     res.json(videos);
   } catch (err) {

@@ -15,6 +15,7 @@ import {
   Loader2,
   Mic,
   MessageSquare,
+  Maximize2,
   Music,
   Info,
   Pause,
@@ -24,6 +25,8 @@ import {
   Settings,
   SkipBack,
   SkipForward,
+  RotateCcw,
+  RotateCw,
   Sparkles,
   UploadCloud,
   Youtube,
@@ -311,6 +314,13 @@ function fallbackThumbnail(videoId: string) {
   return `/api/thumb?id=${encodeURIComponent(videoId)}`;
 }
 
+function youtubeEmbedUrl(videoId: string) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `https://www.youtube.com/embed/${encodeURIComponent(
+    videoId
+  )}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
+}
+
 function parseJsonSafely(text: string) {
   if (!text) return null;
 
@@ -405,6 +415,10 @@ export default function App() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMoreResults, setIsLoadingMoreResults] = useState(false);
+  const [searchPage, setSearchPage] = useState(1);
+  const [activeSearchQuery, setActiveSearchQuery] = useState('');
+  const [hasMoreResults, setHasMoreResults] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeView, setActiveView] = useState<AppView>('home');
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -441,12 +455,15 @@ export default function App() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const savedPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const embedFrameRef = useRef<HTMLIFrameElement | null>(null);
   const previewPanelRef = useRef<HTMLDivElement | null>(null);
   const savedPreviewPanelRef = useRef<HTMLDivElement | null>(null);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [previewCurrentTime, setPreviewCurrentTime] = useState(0);
   const [previewDuration, setPreviewDuration] = useState(0);
+  const [embedCurrentTime, setEmbedCurrentTime] = useState(0);
+  const [isEmbedPlaying, setIsEmbedPlaying] = useState(false);
   const [isSavedPreviewPlaying, setIsSavedPreviewPlaying] = useState(false);
   const [isSavedPreviewLoading, setIsSavedPreviewLoading] = useState(false);
   const [savedPreviewCurrentTime, setSavedPreviewCurrentTime] = useState(0);
@@ -639,7 +656,50 @@ export default function App() {
     setIsPreviewLoading(false);
     setPreviewCurrentTime(0);
     setPreviewDuration(0);
+    setEmbedCurrentTime(0);
+    setIsEmbedPlaying(false);
   }, [selectedVideo?.id, videoDetails?.previewUrl]);
+
+  useEffect(() => {
+    const handleEmbedMessage = (event: MessageEvent) => {
+      if (!String(event.origin).includes('youtube.com')) {
+        return;
+      }
+
+      const payload = typeof event.data === 'string' ? parseJsonSafely(event.data) : event.data;
+      const info = payload?.info;
+
+      if (payload?.event !== 'infoDelivery' || !info) {
+        return;
+      }
+
+      if (typeof info.currentTime === 'number') {
+        setEmbedCurrentTime(info.currentTime);
+      }
+
+      if (typeof info.playerState === 'number') {
+        setIsEmbedPlaying(info.playerState === 1);
+      }
+    };
+
+    window.addEventListener('message', handleEmbedMessage);
+    return () => window.removeEventListener('message', handleEmbedMessage);
+  }, []);
+
+  useEffect(() => {
+    const directPreviewSource = offlinePlaybackUrl || (!isOffline ? videoDetails?.previewUrl || '' : '');
+
+    if (directPreviewSource || isOffline || !selectedVideo) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      sendYouTubeCommand('getCurrentTime');
+      sendYouTubeCommand('getPlayerState');
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [isOffline, offlinePlaybackUrl, selectedVideo?.id, videoDetails?.previewUrl]);
 
   useEffect(() => {
     if (savedPreviewVideoRef.current) {
@@ -660,6 +720,9 @@ export default function App() {
     setShowSuggestions(false);
     setSelectedVideo(null);
     setVideoDetails(null);
+    setSearchPage(1);
+    setActiveSearchQuery('');
+    setHasMoreResults(false);
     if (!options?.preserveRecognition) {
       setRecognition(null);
     }
@@ -686,6 +749,7 @@ export default function App() {
 
           setResults([cachedResult]);
           setResultSource('offline-search');
+          setHasMoreResults(false);
           setSelectedVideo(cachedResult);
 
           if (cachedVideo.details) {
@@ -715,6 +779,7 @@ export default function App() {
 
         setResults(cachedResults);
         setResultSource('offline-search');
+        setHasMoreResults(false);
         setStatus('Offline');
         pushToast('info', 'Offline search results', `${cachedResults.length} saved result${cachedResults.length === 1 ? '' : 's'} found.`);
         return;
@@ -749,6 +814,7 @@ export default function App() {
 
         setResults([directVideo]);
         setResultSource('live');
+        setHasMoreResults(false);
         saveOfflineSearchResults(trimmedQuery, [directVideo]);
         await loadVideoDetails(directVideo);
         setStatus('Idle');
@@ -756,7 +822,7 @@ export default function App() {
         return;
       }
 
-      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}`);
+      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}&page=1`);
       const text = await res.text();
       const data = parseJsonSafely(text);
 
@@ -777,6 +843,9 @@ export default function App() {
 
       setResults(normalized);
       setResultSource('live');
+      setActiveSearchQuery(trimmedQuery);
+      setSearchPage(1);
+      setHasMoreResults(normalized.length >= 10);
       saveOfflineSearchResults(trimmedQuery, normalized);
       setStatus('Idle');
       pushToast(
@@ -786,11 +855,66 @@ export default function App() {
       );
     } catch (err: any) {
       setResults([]);
+      setHasMoreResults(false);
       setStatus('Idle');
       setError(err?.message || 'Failed to search YouTube.');
       pushToast('error', 'Search failed', err?.message || 'Try again in a moment.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const handleLoadMoreResults = async () => {
+    const trimmedQuery = activeSearchQuery.trim();
+    if (!trimmedQuery || isOffline || isSearching || isLoadingMoreResults || !hasMoreResults) {
+      return;
+    }
+
+    setIsLoadingMoreResults(true);
+    setError('');
+
+    try {
+      const nextPage = searchPage + 1;
+      const res = await fetch(
+        `/api/search?q=${encodeURIComponent(trimmedQuery)}&page=${encodeURIComponent(String(nextPage))}`
+      );
+      const text = await res.text();
+      const data = parseJsonSafely(text);
+
+      if (!data && text.trim().startsWith('<')) {
+        throw new Error('Search API returned HTML instead of JSON.');
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Search failed');
+      }
+
+      const resultsArray = Array.isArray(data) ? data : data?.results || [];
+      const normalized = (resultsArray as SearchResult[]).map((result) => ({
+        ...result,
+        thumbnail: result.thumbnail || fallbackThumbnail(result.id)
+      }));
+
+      if (!normalized.length) {
+        setHasMoreResults(false);
+        pushToast('info', 'No more results', 'Try a different keyword for more videos.');
+        return;
+      }
+
+      setResults((currentResults) => {
+        const existingIds = new Set(currentResults.map((result) => result.id));
+        const nextResults = normalized.filter((result) => !existingIds.has(result.id));
+        const mergedResults = [...currentResults, ...nextResults];
+        saveOfflineSearchResults(trimmedQuery, mergedResults);
+        return mergedResults;
+      });
+      setSearchPage(nextPage);
+      setHasMoreResults(normalized.length >= 10);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load more videos.');
+      pushToast('error', 'Load more failed', err?.message || 'Try again in a moment.');
+    } finally {
+      setIsLoadingMoreResults(false);
     }
   };
 
@@ -1046,37 +1170,6 @@ export default function App() {
     } finally {
       setIsRecognizing(false);
       window.setTimeout(() => setStatus('Idle'), 1500);
-    }
-  };
-
-  const openVideo = (url: string) => {
-    if (isOffline) {
-      setError('Opening YouTube is unavailable offline.');
-      return;
-    }
-
-    if (window.electronAPI?.isDesktop) {
-      void window.electronAPI.openExternal(url);
-      return;
-    }
-
-    window.open(url, '_blank', 'noopener,noreferrer');
-  };
-
-  const toggleFullscreen = async (target: HTMLElement | null) => {
-    if (!target) {
-      return;
-    }
-
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        return;
-      }
-
-      await target.requestFullscreen();
-    } catch {
-      setError('Fullscreen is not available in this browser.');
     }
   };
 
@@ -1448,6 +1541,64 @@ export default function App() {
     player.currentTime = clampedTime;
     setSavedPreviewCurrentTime(clampedTime);
     setSavedPreviewDuration(duration);
+  };
+
+  const jumpPreviewBy = (deltaSeconds: number) => {
+    const player = previewVideoRef.current;
+    if (!player) return;
+
+    updatePreviewPosition((player.currentTime || 0) + deltaSeconds);
+  };
+
+  const sendYouTubeCommand = (func: string, args: unknown[] = []) => {
+    embedFrameRef.current?.contentWindow?.postMessage(
+      JSON.stringify({
+        event: 'command',
+        func,
+        args
+      }),
+      '*'
+    );
+  };
+
+  const handleEmbedReady = () => {
+    embedFrameRef.current?.contentWindow?.postMessage(
+      JSON.stringify({
+        event: 'listening',
+        id: 'fk-embed-player'
+      }),
+      '*'
+    );
+    sendYouTubeCommand('getCurrentTime');
+    sendYouTubeCommand('getPlayerState');
+  };
+
+  const toggleEmbedPlayback = () => {
+    sendYouTubeCommand(isEmbedPlaying ? 'pauseVideo' : 'playVideo');
+    setIsEmbedPlaying((current) => !current);
+  };
+
+  const jumpEmbedBy = (deltaSeconds: number) => {
+    const nextTime = Math.max(0, embedCurrentTime + deltaSeconds);
+    setEmbedCurrentTime(nextTime);
+    sendYouTubeCommand('seekTo', [nextTime, true]);
+  };
+
+  const toggleFullscreen = async (target: HTMLElement | null) => {
+    if (!target) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await target.requestFullscreen();
+    } catch {
+      setError('Fullscreen is not available in this browser.');
+    }
   };
 
   const handlePreviewScrub = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1910,6 +2061,7 @@ export default function App() {
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               setShowSuggestions(false);
+                              setSuggestions([]);
                               suggestAbortRef.current?.abort();
                               searchInputRef.current?.blur();
                               void handleSearch();
@@ -2798,7 +2950,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="divide-y divide-emerald-900/35">
-                          {(videoDetails?.audioFormats || []).slice(0, 6).map((format) => (
+                          {(videoDetails?.audioFormats || []).map((format) => (
                             <div
                               key={`audio-${format.itag}-${format.url}`}
                               className="grid min-h-[68px] grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] items-center gap-3 bg-zinc-900/45 px-3 py-2 text-center transition-colors hover:bg-zinc-900/80"
@@ -2853,7 +3005,7 @@ export default function App() {
                           </div>
                         </div>
                         <div className="divide-y divide-emerald-900/35">
-                          {(videoDetails?.videoFormats || []).slice(0, 8).map((format) => (
+                          {(videoDetails?.videoFormats || []).map((format) => (
                             <div
                               key={`video-${format.itag}-${format.url}`}
                               className="grid min-h-[68px] grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] items-center gap-3 bg-zinc-900/45 px-3 py-2 text-center transition-colors hover:bg-zinc-900/80"
@@ -2945,12 +3097,12 @@ export default function App() {
 
                         <button
                           type="button"
-                          onClick={() => openVideo(selectedVideo.url)}
+                          onClick={() => previewPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                           disabled={isOffline}
                           className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                          <Music className="h-4 w-4" />
-                          {isOffline ? 'Offline only' : 'Open on YouTube'}
+                          <Play className="h-4 w-4" />
+                          {isOffline ? 'Offline only' : 'Play in app'}
                         </button>
                       </div>
 
@@ -2999,6 +3151,14 @@ export default function App() {
                       {offlinePlaybackUrl && (
                         <OfflineCopyBadge className="absolute left-3 top-3" />
                       )}
+                      <button
+                        type="button"
+                        onClick={() => void toggleFullscreen(previewPanelRef.current)}
+                        className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white backdrop-blur transition-colors hover:bg-black/85"
+                        aria-label="Fullscreen preview"
+                      >
+                        <Maximize2 className="h-4 w-4" />
+                      </button>
                     </div>
                     <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
                       <input
@@ -3019,7 +3179,7 @@ export default function App() {
                           )}
                         </span>
                       </div>
-                      <div className="flex items-center justify-center gap-7 rounded-lg bg-zinc-900/75 px-4 py-3">
+                      <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-2 py-3">
                         <button
                           type="button"
                           onClick={handlePreviousVideo}
@@ -3028,6 +3188,14 @@ export default function App() {
                           aria-label="Previous preview"
                         >
                           <SkipBack className="h-5 w-5 fill-current" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => jumpPreviewBy(-10)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                          aria-label="Back 10 seconds"
+                        >
+                          <RotateCcw className="h-5 w-5" />
                         </button>
                         <button
                           type="button"
@@ -3048,6 +3216,14 @@ export default function App() {
                         </button>
                         <button
                           type="button"
+                          onClick={() => jumpPreviewBy(10)}
+                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                          aria-label="Forward 10 seconds"
+                        >
+                          <RotateCw className="h-5 w-5" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={handleNextVideo}
                           disabled={!nextVideo}
                           className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
@@ -3061,20 +3237,79 @@ export default function App() {
                 ) : (
                   <>
                     {!isOffline ? (
-                      <button
-                        type="button"
-                        onClick={() => openVideo(videoDetails?.url || selectedVideo.url)}
-                        className="mb-4 block w-full overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg transition-transform hover:-translate-y-1"
-                      >
-                        <img
-                          src={selectedThumbnail}
-                          alt={videoDetails?.title || selectedVideo.title}
-                          className="h-auto w-full object-contain"
-                          onError={(e) => {
-                            e.currentTarget.src = fallbackThumbnail(selectedVideo.id);
-                          }}
-                        />
-                      </button>
+                      <div ref={previewPanelRef} className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
+                        <div className="relative">
+                          <iframe
+                            ref={embedFrameRef}
+                            title={`Play ${videoDetails?.title || selectedVideo.title}`}
+                            src={youtubeEmbedUrl(selectedVideo.id)}
+                            className="aspect-video w-full bg-black"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            allowFullScreen
+                            onLoad={handleEmbedReady}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void toggleFullscreen(previewPanelRef.current)}
+                            className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/65 text-white backdrop-blur transition-colors hover:bg-black/85"
+                            aria-label="Fullscreen player"
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
+                          <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-2 py-3">
+                            <button
+                              type="button"
+                              onClick={handlePreviousVideo}
+                              disabled={!previousVideo}
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Previous video"
+                            >
+                              <SkipBack className="h-5 w-5 fill-current" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => jumpEmbedBy(-10)}
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                              aria-label="Back 10 seconds"
+                            >
+                              <RotateCcw className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={toggleEmbedPlayback}
+                              className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105"
+                              aria-label={isEmbedPlaying ? 'Pause video' : 'Play video'}
+                            >
+                              <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
+                                {isEmbedPlaying ? (
+                                  <Pause className="h-7 w-7" />
+                                ) : (
+                                  <Play className="ml-1 h-7 w-7 fill-current" />
+                                )}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => jumpEmbedBy(10)}
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                              aria-label="Forward 10 seconds"
+                            >
+                              <RotateCw className="h-5 w-5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleNextVideo}
+                              disabled={!nextVideo}
+                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                              aria-label="Next video"
+                            >
+                              <SkipForward className="h-5 w-5 fill-current" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     ) : (
                       <div className="mb-4 overflow-hidden rounded-xl border border-zinc-800/50 bg-black shadow-lg">
                         <img
@@ -3153,6 +3388,27 @@ export default function App() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+        {!selectedVideo && activeSearchQuery && resultSource === 'live' && visibleResults.length > 0 && (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={() => void handleLoadMoreResults()}
+              disabled={isOffline || isSearching || isLoadingMoreResults || !hasMoreResults}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-5 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoadingMoreResults ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading more...
+                </>
+              ) : hasMoreResults ? (
+                'Load more'
+              ) : (
+                'No more videos'
+              )}
+            </button>
           </div>
         )}
           </>

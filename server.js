@@ -282,7 +282,7 @@ function normalizeFormats(formats = []) {
 
 function normalizeInfoFormats(formats = [], sourceUrl = "") {
   return formats
-    .filter((format) => format?.url && format?.ext !== "webm")
+    .filter((format) => format?.url)
     .map((format) => ({
       itag: format.format_id,
       qualityLabel:
@@ -694,14 +694,12 @@ app.get("/api/info", async (req, res) => {
         .filter(
           (format) =>
             !format.hasVideo &&
-            format.hasAudio &&
-            (format.mimeType?.includes("m4a") || format.mimeType?.includes("mp4"))
+            format.hasAudio
         )
         .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0)),
-      (format) => `${Math.round(format.bitrate || 0)}-${format.mimeType || ""}`,
+      (format) => `${format.itag}-${Math.round(format.bitrate || 0)}-${format.mimeType || ""}`,
     ).map((format) => ({
       ...format,
-      mimeType: "audio/mp4",
       url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=audio&audioFormat=mp4&itag=${encodeURIComponent(format.itag)}`,
     }));
 
@@ -725,16 +723,16 @@ app.get("/api/info", async (req, res) => {
       formats
         .filter(
           (format) =>
-            format.hasVideo &&
-            format.hasAudio &&
-            format.mimeType?.includes("mp4"),
+            format.hasVideo,
         )
         .sort((a, b) => {
+          const audioDiff = Number(b.hasAudio) - Number(a.hasAudio);
+          if (audioDiff !== 0) return audioDiff;
           const heightDiff = (b.height || 0) - (a.height || 0);
           if (heightDiff !== 0) return heightDiff;
           return (b.bitrate || 0) - (a.bitrate || 0);
         }),
-      (format) => `${format.height || format.qualityLabel}-${format.mimeType || ""}`,
+      (format) => `${format.itag}-${format.height || format.qualityLabel}-${format.mimeType || ""}-${format.hasAudio}`,
     ).map((format) => ({
       ...format,
       url: `/api/download?url=${encodeURIComponent(sourceUrl)}&type=video&itag=${encodeURIComponent(format.itag)}`,
