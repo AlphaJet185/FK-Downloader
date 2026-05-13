@@ -354,6 +354,18 @@ function sanitizeFileName(input = "") {
   );
 }
 
+function buildContentDispositionAttachment(fileName = "download") {
+  const safeName = sanitizeFileName(fileName).replace(/[\r\n]/g, "").trim();
+  const asciiFallback =
+    safeName
+      .replace(/[^\x20-\x7E]/g, "_")
+      .replace(/["\\]/g, "")
+      .trim() || "download";
+
+  const encoded = encodeURIComponent(safeName).replace(/['()]/g, escape);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+}
+
 function pickRequestedFormat(info, type, itag = "") {
   const formats = Array.isArray(info?.formats)
     ? info.formats.filter((format) => format?.url && format?.ext !== "webm")
@@ -872,7 +884,7 @@ app.get("/api/download", async (req, res) => {
       if (!isPreview) {
         res.setHeader(
           "Content-Disposition",
-          `attachment; filename="${fileName.replace(/"/g, "")}"`,
+          buildContentDispositionAttachment(fileName),
         );
       }
 
@@ -960,7 +972,7 @@ app.get("/api/download", async (req, res) => {
     if (!isPreview) {
       res.setHeader(
         "Content-Disposition",
-        `attachment; filename="${downloadName.replace(/"/g, "")}"`
+        buildContentDispositionAttachment(downloadName),
       );
     }
     res.setHeader("X-Download-Title", probeInfo.title || "download");

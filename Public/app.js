@@ -1,5 +1,6 @@
 const state = {
   suggestions: [],
+  activeSuggestionIndex: -1,
   results: [],
   loading: false,
   lastSubmittedQuery: "",
@@ -28,7 +29,18 @@ const elements = {
   detailsTitle: document.getElementById("details-title"),
   detailsChannel: document.getElementById("details-channel"),
   detailsDuration: document.getElementById("details-duration"),
+  detailsPlayer: document.getElementById("details-player"),
+  detailsAudioPlayer: document.getElementById("details-audio-player"),
+  detailsPreviewCard: document.getElementById("details-preview-card"),
+  videoControls: document.getElementById("video-controls"),
+  videoSeek: document.getElementById("video-seek"),
+  videoPlayToggle: document.getElementById("video-play-toggle"),
+  videoBackward: document.getElementById("video-backward"),
+  videoForward: document.getElementById("video-forward"),
+  videoTime: document.getElementById("video-time"),
+  videoFullscreen: document.getElementById("video-fullscreen"),
   detailsThumbnail: document.getElementById("details-thumbnail"),
+  detailsPreviewActions: document.getElementById("details-preview-actions"),
   formatGroups: document.getElementById("format-groups"),
 };
 
@@ -48,6 +60,14 @@ function formatDuration(totalSeconds) {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remaining).padStart(2, "0")}`
     : `${minutes}:${String(remaining).padStart(2, "0")}`;
+}
+
+function formatPlaybackTime(totalSeconds) {
+  if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+    return "0:00";
+  }
+
+  return formatDuration(totalSeconds);
 }
 
 function extractYouTubeVideoId(input) {
@@ -98,17 +118,116 @@ function renderSuggestions() {
   elements.suggestions.innerHTML = "";
   elements.suggestions.hidden = state.suggestions.length === 0;
 
-  for (const suggestion of state.suggestions) {
+  for (const [index, suggestion] of state.suggestions.entries()) {
     const item = document.createElement("li");
     item.textContent = suggestion;
+    item.className = index === state.activeSuggestionIndex ? "is-active" : "";
     item.addEventListener("click", () => {
       elements.input.value = suggestion;
       state.suggestions = [];
+      state.activeSuggestionIndex = -1;
       renderSuggestions();
       void runSearch();
     });
     elements.suggestions.appendChild(item);
   }
+}
+
+function buildPreviewUrl(url) {
+  return url.includes("?") ? `${url}&preview=1` : `${url}?preview=1`;
+}
+
+function resetDetailsPreview() {
+  elements.detailsPlayer.pause();
+  elements.detailsPlayer.removeAttribute("src");
+  elements.detailsPlayer.load();
+  elements.detailsPlayer.hidden = true;
+  elements.videoControls.hidden = true;
+  elements.videoSeek.value = "0";
+  elements.videoSeek.max = "100";
+  elements.videoTime.textContent = "0:00 / 0:00";
+  elements.videoPlayToggle.textContent = "Play";
+
+  elements.detailsAudioPlayer.pause();
+  elements.detailsAudioPlayer.removeAttribute("src");
+  elements.detailsAudioPlayer.load();
+  elements.detailsAudioPlayer.hidden = true;
+
+  elements.detailsThumbnail.hidden = false;
+  elements.detailsPreviewActions.hidden = true;
+  elements.detailsPreviewActions.innerHTML = "";
+}
+
+function createActionButton(label, className, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function playFormat(format) {
+  const previewUrl = buildPreviewUrl(format.url);
+  const mimeType = format.mimeType || "";
+  const isAudio = mimeType.startsWith("audio/");
+  const player = isAudio ? elements.detailsAudioPlayer : elements.detailsPlayer;
+  const otherPlayer = isAudio ? elements.detailsPlayer : elements.detailsAudioPlayer;
+
+  otherPlayer.pause();
+  otherPlayer.removeAttribute("src");
+  otherPlayer.load();
+  otherPlayer.hidden = true;
+
+  player.hidden = false;
+  player.src = previewUrl;
+  player.load();
+  void player.play().catch(() => {});
+  elements.detailsThumbnail.hidden = true;
+  elements.videoControls.hidden = isAudio;
+}
+
+function renderPreviewActions(details) {
+  elements.detailsPreviewActions.innerHTML = "";
+
+  if (details.previewUrl) {
+    const previewButton = createActionButton(
+      "Play preview",
+      "primary-button preview-action",
+      () => {
+        elements.detailsAudioPlayer.pause();
+        elements.detailsAudioPlayer.removeAttribute("src");
+        elements.detailsAudioPlayer.load();
+        elements.detailsAudioPlayer.hidden = true;
+        elements.detailsPlayer.hidden = false;
+        elements.detailsPlayer.src = details.previewUrl;
+        elements.detailsPlayer.load();
+        void elements.detailsPlayer.play().catch(() => {});
+        elements.detailsThumbnail.hidden = true;
+        elements.videoControls.hidden = false;
+      },
+    );
+    elements.detailsPreviewActions.appendChild(previewButton);
+  }
+
+  const thumbnailButton = createActionButton(
+    "Show thumbnail",
+    "ghost-button preview-action",
+    () => {
+      elements.detailsPlayer.pause();
+      elements.detailsPlayer.removeAttribute("src");
+      elements.detailsPlayer.load();
+      elements.detailsPlayer.hidden = true;
+      elements.videoControls.hidden = true;
+      elements.detailsAudioPlayer.pause();
+      elements.detailsAudioPlayer.removeAttribute("src");
+      elements.detailsAudioPlayer.load();
+      elements.detailsAudioPlayer.hidden = true;
+      elements.detailsThumbnail.hidden = false;
+    },
+  );
+  elements.detailsPreviewActions.appendChild(thumbnailButton);
+  elements.detailsPreviewActions.hidden = false;
 }
 
 function renderResults() {
@@ -160,13 +279,38 @@ function renderFormats(label, formats) {
   list.className = "format-list";
 
   for (const format of formats) {
-    const link = document.createElement("a");
-    link.className = "format-link";
-    link.href = format.url;
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    link.innerHTML = `<span>${format.qualityLabel || format.mimeType || "Format"}</span><span>${format.contentLength || ""}</span>`;
-    list.appendChild(link);
+    const card = document.createElement("article");
+    card.className = "format-card";
+
+    const meta = document.createElement("div");
+    meta.className = "format-card-meta";
+    meta.innerHTML = `
+      <div>
+        <strong>${format.qualityLabel || format.mimeType || "Format"}</strong>
+        <span>${format.mimeType || label}</span>
+      </div>
+      <span>${format.contentLength || ""}</span>
+    `;
+
+    const actions = document.createElement("div");
+    actions.className = "format-card-actions";
+
+    const playButton = createActionButton(
+      "Play",
+      "ghost-button format-action",
+      () => playFormat(format),
+    );
+
+    const downloadLink = document.createElement("a");
+    downloadLink.className = "primary-button format-action";
+    downloadLink.href = format.url;
+    downloadLink.textContent = "Download";
+
+    actions.appendChild(playButton);
+    actions.appendChild(downloadLink);
+    card.appendChild(meta);
+    card.appendChild(actions);
+    list.appendChild(card);
   }
 
   section.appendChild(list);
@@ -182,8 +326,10 @@ function renderDetails(details) {
   elements.detailsTitle.textContent = details.title || "";
   elements.detailsChannel.textContent = details.channel || "";
   elements.detailsDuration.textContent = `Duration: ${formatDuration(details.duration)}`;
+  resetDetailsPreview();
   elements.detailsThumbnail.src = details.thumbnail || "";
   elements.detailsThumbnail.alt = details.title || "Video thumbnail";
+  renderPreviewActions(details);
   elements.formatGroups.innerHTML = "";
 
   if (details.videoFormats?.length) {
@@ -263,6 +409,7 @@ async function runSearch() {
   state.loading = true;
   state.loadingMore = false;
   state.suggestions = [];
+  state.activeSuggestionIndex = -1;
   clearTimeout(suggestTimer);
   renderSuggestions();
   elements.pasteButton.disabled = true;
@@ -357,6 +504,7 @@ async function loadSuggestions() {
 
   if (!query || looksLikeUrl(query)) {
     state.suggestions = [];
+    state.activeSuggestionIndex = -1;
     renderSuggestions();
     return;
   }
@@ -365,9 +513,11 @@ async function loadSuggestions() {
     const response = await fetch(`/api/suggest?q=${encodeURIComponent(query)}`);
     const payload = await response.json();
     state.suggestions = Array.isArray(payload) ? payload.slice(0, 6) : [];
+    state.activeSuggestionIndex = state.suggestions.length > 0 ? 0 : -1;
     renderSuggestions();
   } catch {
     state.suggestions = [];
+    state.activeSuggestionIndex = -1;
     renderSuggestions();
   }
 }
@@ -408,14 +558,53 @@ elements.searchButton.addEventListener("click", () => {
 });
 
 elements.input.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    if (state.suggestions.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    state.activeSuggestionIndex =
+      state.activeSuggestionIndex < state.suggestions.length - 1
+        ? state.activeSuggestionIndex + 1
+        : 0;
+    elements.input.value = state.suggestions[state.activeSuggestionIndex];
+    renderSuggestions();
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    if (state.suggestions.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    state.activeSuggestionIndex =
+      state.activeSuggestionIndex > 0
+        ? state.activeSuggestionIndex - 1
+        : state.suggestions.length - 1;
+    elements.input.value = state.suggestions[state.activeSuggestionIndex];
+    renderSuggestions();
+    return;
+  }
+
+  if (event.key === "Escape") {
+    state.suggestions = [];
+    state.activeSuggestionIndex = -1;
+    renderSuggestions();
+    return;
+  }
+
   if (event.key === "Enter" && !event.repeat) {
     event.preventDefault();
+    if (state.activeSuggestionIndex >= 0 && state.suggestions[state.activeSuggestionIndex]) {
+      elements.input.value = state.suggestions[state.activeSuggestionIndex];
+    }
     void runSearch();
   }
 });
 
 elements.input.addEventListener("input", () => {
   elements.heroCopy.textContent = "Search for a video to get started.";
+  state.activeSuggestionIndex = -1;
   clearTimeout(suggestTimer);
   suggestTimer = setTimeout(() => {
     void loadSuggestions();
@@ -430,6 +619,69 @@ elements.searchMoreButton.addEventListener("click", () => {
   void loadMoreResults();
 });
 
+function syncVideoControls() {
+  const duration = Number.isFinite(elements.detailsPlayer.duration)
+    ? elements.detailsPlayer.duration
+    : 0;
+  const currentTime = Number.isFinite(elements.detailsPlayer.currentTime)
+    ? elements.detailsPlayer.currentTime
+    : 0;
+
+  elements.videoSeek.max = String(duration || 100);
+  elements.videoSeek.value = String(Math.min(currentTime, duration || currentTime || 0));
+  elements.videoTime.textContent = `${formatPlaybackTime(currentTime)} / ${formatPlaybackTime(duration)}`;
+  elements.videoPlayToggle.textContent = elements.detailsPlayer.paused ? "Play" : "Pause";
+}
+
+elements.videoPlayToggle.addEventListener("click", () => {
+  if (!elements.detailsPlayer.src) {
+    return;
+  }
+
+  if (elements.detailsPlayer.paused) {
+    void elements.detailsPlayer.play().catch(() => {});
+    return;
+  }
+
+  elements.detailsPlayer.pause();
+});
+
+elements.videoBackward.addEventListener("click", () => {
+  elements.detailsPlayer.currentTime = Math.max(0, elements.detailsPlayer.currentTime - 10);
+});
+
+elements.videoForward.addEventListener("click", () => {
+  const duration = Number.isFinite(elements.detailsPlayer.duration)
+    ? elements.detailsPlayer.duration
+    : elements.detailsPlayer.currentTime + 10;
+  elements.detailsPlayer.currentTime = Math.min(duration, elements.detailsPlayer.currentTime + 10);
+});
+
+elements.videoSeek.addEventListener("input", () => {
+  const nextTime = Number(elements.videoSeek.value);
+  if (Number.isFinite(nextTime)) {
+    elements.detailsPlayer.currentTime = nextTime;
+  }
+});
+
+elements.videoFullscreen.addEventListener("click", async () => {
+  const target = elements.detailsPreviewCard;
+  if (!document.fullscreenElement) {
+    await target.requestFullscreen?.().catch(() => {});
+    return;
+  }
+
+  if (document.fullscreenElement === target) {
+    await document.exitFullscreen?.().catch(() => {});
+  }
+});
+
+elements.detailsPlayer.addEventListener("loadedmetadata", syncVideoControls);
+elements.detailsPlayer.addEventListener("timeupdate", syncVideoControls);
+elements.detailsPlayer.addEventListener("play", syncVideoControls);
+elements.detailsPlayer.addEventListener("pause", syncVideoControls);
+elements.detailsPlayer.addEventListener("ended", syncVideoControls);
+
 elements.backButton.addEventListener("click", () => {
   elements.videoView.hidden = true;
   elements.detailsLoading.hidden = true;
@@ -441,6 +693,7 @@ elements.backButton.addEventListener("click", () => {
 document.addEventListener("click", (event) => {
   if (!elements.suggestions.contains(event.target) && event.target !== elements.input) {
     state.suggestions = [];
+    state.activeSuggestionIndex = -1;
     renderSuggestions();
   }
 });

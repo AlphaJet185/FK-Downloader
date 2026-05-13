@@ -418,6 +418,11 @@ input {
   background: rgba(0, 201, 141, 0.10);
 }
 
+.suggestions li.is-active {
+  background: rgba(0, 201, 141, 0.16);
+  color: #f4fff9;
+}
+
 .empty-state {
   min-height: 320px;
   margin-top: 80px;
@@ -477,6 +482,142 @@ input {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
+}
+
+.details-preview-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: rgba(7, 10, 11, 0.9);
+}
+
+.details-preview-card img,
+.details-preview-card video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.details-preview-card video {
+  aspect-ratio: 16 / 9;
+  background: #080b0a;
+}
+
+.video-controls {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+  background: linear-gradient(180deg, rgba(8, 11, 10, 0.92), rgba(14, 20, 18, 0.98));
+  border-top: 1px solid rgba(0, 201, 141, 0.12);
+}
+
+.video-seek {
+  width: 100%;
+  accent-color: #00c98d;
+  cursor: pointer;
+}
+
+.video-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.video-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.video-controls-group-right {
+  justify-content: flex-end;
+}
+
+.video-control-button {
+  min-height: 46px;
+  min-width: 92px;
+}
+
+.video-time {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.details-preview-card audio {
+  display: block;
+  width: 100%;
+  padding: 24px;
+  background: rgba(7, 10, 11, 0.92);
+}
+
+@media (max-width: 720px) {
+  .video-controls-row {
+    align-items: stretch;
+  }
+
+  .video-controls-group,
+  .video-controls-group-right {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .video-control-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+.details-preview-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.preview-action {
+  min-height: 50px;
+}
+
+.format-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: rgba(15, 18, 19, 0.92);
+}
+
+.format-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.format-card-meta strong {
+  display: block;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.format-card-meta span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.format-card-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.format-action {
+  min-height: 48px;
 }
 
 .loader-ring {
