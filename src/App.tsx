@@ -23,10 +23,6 @@ import {
   Radio,
   Search,
   Settings,
-  SkipBack,
-  SkipForward,
-  RotateCcw,
-  RotateCw,
   Sparkles,
   UploadCloud,
   Youtube,
@@ -127,9 +123,39 @@ type ResultSource = 'live' | 'offline-search';
 type AppView = 'home' | 'settings';
 type LibraryFilter = 'all' | 'saved' | 'offline';
 type LibrarySort = 'newest' | 'size' | 'title';
+type ThemeChoice = 'emerald' | 'ocean' | 'violet' | 'sunset';
 
 const OFFLINE_MODE_MESSAGE =
   'Recent searches and opened videos stay available. Preview, downloads, and YouTube links come back when you reconnect.';
+const SEARCH_PAGE_SIZE = 30;
+const MAX_SEARCH_PAGE = 3;
+const THEME_STORAGE_KEY = 'fk-downloader-theme';
+const THEME_OPTIONS: Array<{ id: ThemeChoice; label: string; swatch: string; rootClass: string }> = [
+  {
+    id: 'emerald',
+    label: 'Emerald',
+    swatch: 'bg-emerald-400',
+    rootClass: 'from-emerald-950 via-zinc-950 to-emerald-900 text-emerald-50'
+  },
+  {
+    id: 'ocean',
+    label: 'Ocean',
+    swatch: 'bg-cyan-400',
+    rootClass: 'from-cyan-950 via-zinc-950 to-blue-950 text-cyan-50'
+  },
+  {
+    id: 'violet',
+    label: 'Violet',
+    swatch: 'bg-violet-400',
+    rootClass: 'from-violet-950 via-zinc-950 to-fuchsia-950 text-violet-50'
+  },
+  {
+    id: 'sunset',
+    label: 'Sunset',
+    swatch: 'bg-orange-400',
+    rootClass: 'from-orange-950 via-zinc-950 to-rose-950 text-orange-50'
+  }
+];
 
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
@@ -427,6 +453,7 @@ export default function App() {
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [status, setStatus] = useState('Idle');
   const [error, setError] = useState('');
+  const [detailsWarning, setDetailsWarning] = useState('');
   const [recognition, setRecognition] = useState<RecognitionResult | null>(null);
   const [videoDetails, setVideoDetails] = useState<VideoDetails | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -444,6 +471,10 @@ export default function App() {
   const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>('all');
   const [librarySort, setLibrarySort] = useState<LibrarySort>('newest');
   const [settingsThumbnailCount, setSettingsThumbnailCount] = useState(12);
+  const [themeChoice, setThemeChoice] = useState<ThemeChoice>(() => {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return THEME_OPTIONS.some((option) => option.id === storedTheme) ? (storedTheme as ThemeChoice) : 'emerald';
+  });
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const suggestTimeoutRef = useRef<number | null>(null);
@@ -468,6 +499,7 @@ export default function App() {
   const [isSavedPreviewLoading, setIsSavedPreviewLoading] = useState(false);
   const [savedPreviewCurrentTime, setSavedPreviewCurrentTime] = useState(0);
   const [savedPreviewDuration, setSavedPreviewDuration] = useState(0);
+  const activeTheme = THEME_OPTIONS.find((option) => option.id === themeChoice) || THEME_OPTIONS[0];
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -479,6 +511,11 @@ export default function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeChoice;
+    window.localStorage.setItem(THEME_STORAGE_KEY, themeChoice);
+  }, [themeChoice]);
 
   useEffect(() => {
     if (!isOffline && status === 'Offline') {
@@ -845,7 +882,7 @@ export default function App() {
       setResultSource('live');
       setActiveSearchQuery(trimmedQuery);
       setSearchPage(1);
-      setHasMoreResults(normalized.length >= 10);
+      setHasMoreResults(normalized.length >= SEARCH_PAGE_SIZE && MAX_SEARCH_PAGE > 1);
       saveOfflineSearchResults(trimmedQuery, normalized);
       setStatus('Idle');
       pushToast(
@@ -866,7 +903,7 @@ export default function App() {
 
   const handleLoadMoreResults = async () => {
     const trimmedQuery = activeSearchQuery.trim();
-    if (!trimmedQuery || isOffline || isSearching || isLoadingMoreResults || !hasMoreResults) {
+    if (!trimmedQuery || isOffline || isSearching || isLoadingMoreResults || !hasMoreResults || searchPage >= MAX_SEARCH_PAGE) {
       return;
     }
 
@@ -909,7 +946,7 @@ export default function App() {
         return mergedResults;
       });
       setSearchPage(nextPage);
-      setHasMoreResults(normalized.length >= 10);
+      setHasMoreResults(normalized.length >= SEARCH_PAGE_SIZE && nextPage < MAX_SEARCH_PAGE);
     } catch (err: any) {
       setError(err?.message || 'Failed to load more videos.');
       pushToast('error', 'Load more failed', err?.message || 'Try again in a moment.');
@@ -926,6 +963,7 @@ export default function App() {
     setVideoDetails(null);
     setIsLoadingDetails(true);
     setError('');
+    setDetailsWarning('');
 
     try {
       if (isOffline) {
@@ -990,8 +1028,18 @@ export default function App() {
       );
       setOfflineLibrary(getRecentOfflineVideos());
     } catch (err: any) {
-      setVideoDetails(null);
-      setError(err?.message || 'Failed to load video details.');
+      setVideoDetails({
+        title: video.title,
+        channel: video.channel,
+        duration: Number(video.duration || 0),
+        thumbnail: video.thumbnail || fallbackThumbnail(video.id),
+        url: video.url,
+        previewUrl: '',
+        audioFormats: [],
+        videoFormats: []
+      });
+      setDetailsWarning('Download options could not be loaded right now. You can still play the video in the app.');
+      pushToast('info', 'Playing in app', 'Download options are unavailable right now.');
     } finally {
       setIsLoadingDetails(false);
     }
@@ -1950,7 +1998,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen w-full bg-gradient-to-br from-emerald-950 via-zinc-950 to-emerald-900 px-4 py-4 text-emerald-50 transition-colors sm:px-6 lg:px-8 ${
+      className={`min-h-screen w-full bg-gradient-to-br px-4 py-4 transition-colors sm:px-6 lg:px-8 ${activeTheme.rootClass} ${
         isDragging ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-900/20' : ''
       }`}
       onDragOver={handleDragOver}
@@ -1988,16 +2036,16 @@ export default function App() {
                   <div className="relative mx-auto flex max-w-5xl flex-col items-center text-center">
                     <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.28em] text-emerald-200">
                       <Download className="h-4 w-4" />
-                      Video Downloader
+                      Fast, ad-free downloads
                     </div>
 
-                    <h1 className="mt-7 text-5xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
-                      FK Downloader
+                    <h1 className="mt-7 max-w-5xl text-4xl font-black tracking-tight text-white sm:text-6xl lg:text-7xl">
+                      FK Downloader: The Fast, Ad-Free Way to Save Media
                     </h1>
 
                     <p className="mt-6 max-w-3xl text-lg font-semibold leading-8 text-emerald-100/65 sm:text-xl">
-                      Paste a YouTube link or search keywords, then pick the format you want. Fast conversion,
-                      simple flow, and your saved items stay close by.
+                      Search or paste a YouTube link, preview in-app, then choose MP3 or MP4 without ads, popups,
+                      or extra pages.
                     </p>
 
                     <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -2011,7 +2059,7 @@ export default function App() {
                         Fast search
                       </div>
                       <div className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-4 py-2 text-sm font-bold text-emerald-200">
-                        Offline saves
+                        In-app player
                       </div>
                     </div>
 
@@ -2036,7 +2084,21 @@ export default function App() {
                   </div>
                 </section>
 
-                <section className="rounded-[2rem] border border-emerald-700/25 bg-zinc-950/45 p-5 shadow-[0_20px_70px_rgba(0,0,0,0.25)] lg:p-7">
+                <section
+                  aria-labelledby="start-search-heading"
+                  className="rounded-[2rem] border border-emerald-400/45 bg-zinc-950/55 p-5 shadow-[0_0_0_1px_rgba(52,211,153,0.12),0_20px_80px_rgba(16,185,129,0.16)] lg:p-7"
+                >
+                  <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h2 id="start-search-heading" className="text-xl font-black text-emerald-50 sm:text-2xl">
+                        Start here
+                      </h2>
+                      <p className="mt-1 text-sm font-semibold text-emerald-300/80">
+                        Paste a link or search a title. This is the main action.
+                      </p>
+                    </div>
+                    <div className="text-xs font-bold uppercase tracking-[0.2em] text-emerald-500">MP3 / MP4 ready</div>
+                  </div>
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
                     <div className="min-w-0 flex-1">
                       <div className="relative">
@@ -2151,7 +2213,7 @@ export default function App() {
                 </button>
                 <h2 className="text-xl font-bold text-emerald-100 sm:text-2xl">Settings</h2>
                 <p className="mt-1 max-w-2xl text-sm text-emerald-500">
-                  Two sections keep this page easier to scan: how to use, then workspace and storage controls.
+                  Keep downloads simple: choose a color, check saved items, and set an optional save folder.
                 </p>
               </div>
               <div className="inline-flex w-fit items-center rounded-full border border-emerald-800/50 bg-zinc-950/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
@@ -2222,8 +2284,37 @@ export default function App() {
               <section className="rounded-[1.75rem] border border-emerald-800/30 bg-zinc-900/45 p-5 shadow-[0_18px_45px_rgba(0,0,0,0.18)] backdrop-blur sm:p-6">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
                   <FolderOpen className="h-4 w-4" />
-                  Workspace & storage
+                  Saved files & app setup
                 </h3>
+                <div className="mt-4 rounded-3xl border border-emerald-800/30 bg-zinc-950/45 p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+                    <Sparkles className="h-4 w-4" />
+                    Color theme
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-emerald-100/60">
+                    Pick a stronger accent for different screens and devices.
+                  </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                    {THEME_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setThemeChoice(option.id)}
+                        className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold transition-colors ${
+                          themeChoice === option.id
+                            ? 'border-emerald-400 bg-emerald-500/15 text-emerald-100'
+                            : 'border-emerald-800/30 bg-black/20 text-emerald-100/70 hover:bg-emerald-900/20'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span className={`h-3 w-3 rounded-full ${option.swatch}`} />
+                          {option.label}
+                        </span>
+                        {themeChoice === option.id && <CheckCircle2 className="h-4 w-4" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Save folder</div>
@@ -2242,12 +2333,12 @@ export default function App() {
                     <p className="mt-2 text-xs leading-5 text-emerald-100/60">Files you saved to a local folder.</p>
                   </div>
                   <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Offline copies</div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Browser copies</div>
                     <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineDownloads.length}</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-100/60">Browser-stored copies for quick reopening.</p>
                   </div>
                   <div className="rounded-2xl border border-emerald-800/30 bg-zinc-950/60 p-4">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Cached videos</div>
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">Recent videos</div>
                     <div className="mt-2 text-lg font-semibold text-emerald-100">{offlineLibrary.length}</div>
                     <p className="mt-2 text-xs leading-5 text-emerald-100/60">Recent videos available from local history.</p>
                   </div>
@@ -2262,7 +2353,7 @@ export default function App() {
                     {downloadSettings.folderPath || 'No folder selected yet. Desktop downloads will prompt the first time.'}
                   </p>
                   <p className="mt-2 text-xs leading-5 text-emerald-100/60">
-                    Browser mode keeps its own local copy. Desktop mode can also write directly to a chosen folder.
+                    Browser copies are convenient but can disappear if browser data is cleared. Desktop mode can also write to a chosen folder.
                   </p>
                   <button
                     type="button"
@@ -2729,41 +2820,33 @@ export default function App() {
                         )}
                       </span>
                     </div>
-                    <div className="flex items-center justify-center gap-7 rounded-lg bg-zinc-900/75 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-3 py-3">
                       <button
                         type="button"
                         onClick={handlePreviousSavedDownload}
                         disabled={!previousSavedDownload}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                        className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                         aria-label="Previous saved preview"
                       >
-                        <SkipBack className="h-5 w-5 fill-current" />
+                        Prev
                       </button>
                       <button
                         type="button"
                         onClick={() => void toggleSavedPreviewPlayback()}
                         disabled={isSavedPreviewLoading}
-                        className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-80"
+                        className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
                         aria-label={isSavedPreviewPlaying ? 'Pause saved preview' : 'Play saved preview'}
                       >
-                        <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
-                          {isSavedPreviewLoading ? (
-                            <Loader2 className="h-6 w-6 animate-spin" />
-                          ) : isSavedPreviewPlaying ? (
-                            <Pause className="h-7 w-7" />
-                          ) : (
-                            <Play className="ml-1 h-7 w-7 fill-current" />
-                          )}
-                        </span>
+                        {isSavedPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : isSavedPreviewPlaying ? 'Pause' : 'Play'}
                       </button>
                       <button
                         type="button"
                         onClick={handleNextSavedDownload}
                         disabled={!nextSavedDownload}
-                        className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                        className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                         aria-label="Next saved preview"
                       >
-                        <SkipForward className="h-5 w-5 fill-current" />
+                        Next
                       </button>
                     </div>
                   </div>
@@ -2842,7 +2925,13 @@ export default function App() {
                           paused until the connection comes back.
                         </div>
                       )}
+                      {detailsWarning && (
+                        <div className="rounded-xl border border-amber-500/25 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/85">
+                          {detailsWarning}
+                        </div>
+                      )}
 
+                      {!detailsWarning && (
                       <div className="rounded-2xl border border-emerald-700/25 bg-emerald-950/20 p-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div>
@@ -2941,7 +3030,9 @@ export default function App() {
                           </button>
                         </div>
                       </div>
+                      )}
 
+                      {!detailsWarning && (
                       <div className="overflow-hidden rounded-xl border border-emerald-800/30 bg-zinc-950/40">
                         <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(4.5rem,0.55fr)_minmax(7.25rem,0.8fr)] border-b border-emerald-800/30 bg-zinc-950/80 px-3 py-3 text-sm font-bold text-emerald-100">
                           <div className="col-span-3 flex items-center gap-2">
@@ -3056,12 +3147,13 @@ export default function App() {
                           )}
                         </div>
                       </div>
+                      )}
 
                       <div className="flex flex-col gap-3 sm:flex-row">
                         <button
                           type="button"
                           onClick={() => void handleDownload(videoDetails?.url || selectedVideo.url)}
-                          disabled={Boolean(downloadState) || isOffline}
+                          disabled={Boolean(downloadState) || isOffline || Boolean(detailsWarning)}
                           className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {isOffline
@@ -3076,7 +3168,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => void handleSaveOfflineDownload()}
-                          disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy}
+                          disabled={Boolean(downloadState) || isOffline || hasSavedOfflineCopy || Boolean(detailsWarning)}
                           className="flex min-h-[48px] items-center justify-center gap-2 rounded-lg border border-emerald-700/50 bg-zinc-900 px-4 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {downloadState?.key === 'offline-download' ? (
@@ -3179,57 +3271,49 @@ export default function App() {
                           )}
                         </span>
                       </div>
-                      <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-2 py-3">
+                      <div className="flex flex-wrap items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-3 py-3">
                         <button
                           type="button"
                           onClick={handlePreviousVideo}
                           disabled={!previousVideo}
-                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                           aria-label="Previous preview"
                         >
-                          <SkipBack className="h-5 w-5 fill-current" />
+                          Prev
                         </button>
                         <button
                           type="button"
                           onClick={() => jumpPreviewBy(-10)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
                           aria-label="Back 10 seconds"
                         >
-                          <RotateCcw className="h-5 w-5" />
+                          -10s
                         </button>
                         <button
                           type="button"
                           onClick={() => void togglePreviewPlayback()}
                           disabled={isPreviewLoading}
-                          className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105 disabled:cursor-wait disabled:opacity-80"
+                          className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
                           aria-label={isPreviewPlaying ? 'Pause preview' : 'Play preview'}
                         >
-                          <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
-                            {isPreviewLoading ? (
-                              <Loader2 className="h-6 w-6 animate-spin" />
-                            ) : isPreviewPlaying ? (
-                              <Pause className="h-7 w-7" />
-                            ) : (
-                              <Play className="ml-1 h-7 w-7 fill-current" />
-                            )}
-                          </span>
+                          {isPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : isPreviewPlaying ? 'Pause' : 'Play'}
                         </button>
                         <button
                           type="button"
                           onClick={() => jumpPreviewBy(10)}
-                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
                           aria-label="Forward 10 seconds"
                         >
-                          <RotateCw className="h-5 w-5" />
+                          +10s
                         </button>
                         <button
                           type="button"
                           onClick={handleNextVideo}
                           disabled={!nextVideo}
-                          className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                           aria-label="Next preview"
                         >
-                          <SkipForward className="h-5 w-5 fill-current" />
+                          Next
                         </button>
                       </div>
                     </div>
@@ -3258,54 +3342,48 @@ export default function App() {
                           </button>
                         </div>
                         <div className="border-t border-zinc-800/70 bg-zinc-950 px-4 py-4">
-                          <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-2 py-3">
+                          <div className="flex flex-wrap items-center justify-center gap-2 rounded-lg bg-zinc-900/75 px-3 py-3">
                             <button
                               type="button"
                               onClick={handlePreviousVideo}
                               disabled={!previousVideo}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                               aria-label="Previous video"
                             >
-                              <SkipBack className="h-5 w-5 fill-current" />
+                              Prev
                             </button>
                             <button
                               type="button"
                               onClick={() => jumpEmbedBy(-10)}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
                               aria-label="Back 10 seconds"
                             >
-                              <RotateCcw className="h-5 w-5" />
+                              -10s
                             </button>
                             <button
                               type="button"
                               onClick={toggleEmbedPlayback}
-                              className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-orange-400 via-fuchsia-500 to-purple-600 p-[4px] text-white shadow-[0_12px_30px_rgba(168,85,247,0.3)] transition-transform hover:scale-105"
+                              className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400"
                               aria-label={isEmbedPlaying ? 'Pause video' : 'Play video'}
                             >
-                              <span className="flex h-full w-full items-center justify-center rounded-full bg-zinc-900">
-                                {isEmbedPlaying ? (
-                                  <Pause className="h-7 w-7" />
-                                ) : (
-                                  <Play className="ml-1 h-7 w-7 fill-current" />
-                                )}
-                              </span>
+                              {isEmbedPlaying ? 'Pause' : 'Play'}
                             </button>
                             <button
                               type="button"
                               onClick={() => jumpEmbedBy(10)}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10"
+                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
                               aria-label="Forward 10 seconds"
                             >
-                              <RotateCw className="h-5 w-5" />
+                              +10s
                             </button>
                             <button
                               type="button"
                               onClick={handleNextVideo}
                               disabled={!nextVideo}
-                              className="flex h-9 w-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35"
+                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
                               aria-label="Next video"
                             >
-                              <SkipForward className="h-5 w-5 fill-current" />
+                              Next
                             </button>
                           </div>
                         </div>
@@ -3356,7 +3434,7 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-4">
             {visibleResults.map((result) => (
               <button
                 type="button"
@@ -3395,7 +3473,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => void handleLoadMoreResults()}
-              disabled={isOffline || isSearching || isLoadingMoreResults || !hasMoreResults}
+              disabled={isOffline || isSearching || isLoadingMoreResults || !hasMoreResults || searchPage >= MAX_SEARCH_PAGE}
               className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-emerald-700/50 bg-zinc-900 px-5 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoadingMoreResults ? (
@@ -3403,7 +3481,7 @@ export default function App() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Loading more...
                 </>
-              ) : hasMoreResults ? (
+              ) : hasMoreResults && searchPage < MAX_SEARCH_PAGE ? (
                 'Load more'
               ) : (
                 'No more videos'
@@ -3416,14 +3494,35 @@ export default function App() {
 
         {shouldShowHomeEmptyState && (
           <section className="mt-20 flex min-h-[calc(100vh-22rem)] flex-1 items-center justify-center sm:mt-28 lg:mt-36">
-            <div className="flex flex-col items-center gap-6 text-center">
+            <div className="flex max-w-3xl flex-col items-center gap-6 rounded-[2rem] border border-emerald-800/25 bg-zinc-950/35 p-6 text-center shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-8">
               <div className="relative">
                 <div className="absolute inset-0 rounded-full bg-emerald-500/10 blur-2xl" />
                 <Search className="relative h-20 w-20 text-emerald-500/10 sm:h-24 sm:w-24" strokeWidth={1.5} />
               </div>
-              <p className="text-base text-emerald-500/45 sm:text-lg">
-                {isOffline ? 'Reconnect to search online, or use your saved history.' : 'Search for a video to get started.'}
-              </p>
+              <div>
+                <h2 className="text-2xl font-black text-emerald-50 sm:text-3xl">
+                  {isOffline ? 'Offline mode is ready' : 'Search first, download second'}
+                </h2>
+                <p className="mt-3 text-base leading-7 text-emerald-100/60 sm:text-lg">
+                  {isOffline
+                    ? 'Reconnect to search online, or use recent videos and saved browser copies.'
+                    : 'Paste a YouTube URL or type a title in the search box above. Results, previews, and download choices appear here.'}
+                </p>
+              </div>
+              <div className="grid w-full gap-3 text-left sm:grid-cols-3">
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-sm font-bold text-emerald-100">1. Search</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/55">Use the focused input above as the starting point.</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-sm font-bold text-emerald-100">2. Preview</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/55">Play the result in the app before choosing a file.</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-800/25 bg-black/20 p-4">
+                  <div className="text-sm font-bold text-emerald-100">3. Download</div>
+                  <p className="mt-1 text-xs leading-5 text-emerald-100/55">Pick MP3 or MP4 from the available options.</p>
+                </div>
+              </div>
             </div>
           </section>
         )}

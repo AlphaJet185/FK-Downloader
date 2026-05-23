@@ -17,6 +17,9 @@ const elements = {
   input: document.getElementById("search-input"),
   pasteButton: document.getElementById("paste-button"),
   searchButton: document.getElementById("search-button"),
+  heroSettings: document.querySelector(".hero-settings"),
+  settingsPanel: document.getElementById("settings-panel"),
+  settingsClose: document.getElementById("settings-close"),
   recognizeButton: document.getElementById("recognize-button"),
   suggestions: document.getElementById("suggestions"),
   heroEmpty: document.getElementById("hero-empty"),
@@ -53,9 +56,21 @@ const elements = {
 let suggestTimer = null;
 const SEARCH_BUTTON_LABEL = "Search";
 const SEARCH_MORE_LABEL = "Search more";
+const SEARCH_PAGE_SIZE = 30;
+const MAX_SEARCH_PAGE = 3;
+const THEME_STORAGE_KEY = "fk-downloader-theme";
 
 function buttonLoadingMarkup(label) {
   return `<span class="button-loader" aria-hidden="true"></span><span>${label}</span>`;
+}
+
+function setTheme(theme) {
+  const nextTheme = ["emerald", "ocean", "violet", "sunset"].includes(theme) ? theme : "emerald";
+  document.body.dataset.theme = nextTheme;
+  localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.themeChoice === nextTheme);
+  });
 }
 
 function formatDuration(totalSeconds) {
@@ -342,8 +357,9 @@ function renderResults() {
   elements.resultsGrid.innerHTML = "";
   elements.resultsGrid.hidden = state.results.length === 0;
   elements.resultsActions.hidden = state.results.length === 0;
-  elements.searchMoreButton.innerHTML = SEARCH_MORE_LABEL;
-  elements.searchMoreButton.disabled = state.loadingMore;
+  const canLoadMore = state.currentQuery && state.currentPage < MAX_SEARCH_PAGE && state.results.length >= SEARCH_PAGE_SIZE;
+  elements.searchMoreButton.innerHTML = canLoadMore ? SEARCH_MORE_LABEL : "No more videos";
+  elements.searchMoreButton.disabled = state.loadingMore || !canLoadMore;
 
   for (const result of state.results) {
     const card = document.createElement("article");
@@ -363,6 +379,9 @@ function renderResults() {
 function appendResults(nextResults) {
   elements.resultsGrid.hidden = nextResults.length === 0 && state.results.length === 0;
   elements.resultsActions.hidden = nextResults.length === 0 && state.results.length === 0;
+  const canLoadMore = state.currentQuery && state.currentPage < MAX_SEARCH_PAGE && nextResults.length >= SEARCH_PAGE_SIZE;
+  elements.searchMoreButton.innerHTML = canLoadMore ? SEARCH_MORE_LABEL : "No more videos";
+  elements.searchMoreButton.disabled = state.loadingMore || !canLoadMore;
 
   for (const result of nextResults) {
     const card = document.createElement("article");
@@ -445,6 +464,14 @@ function renderDetails(details) {
   renderPreviewActions(details);
   elements.formatGroups.innerHTML = "";
 
+  if (details.detailsWarning) {
+    const warning = document.createElement("div");
+    warning.className = "details-warning";
+    warning.textContent = details.detailsWarning;
+    elements.formatGroups.appendChild(warning);
+    return;
+  }
+
   if (details.videoFormats?.length) {
     elements.formatGroups.appendChild(renderFormats("Video", details.videoFormats));
   }
@@ -470,12 +497,22 @@ async function loadDetails(result) {
       throw new Error(payload?.error || "Failed to load video details.");
     }
 
-    renderDetails(payload);
+    renderDetails({ ...payload, id: payload?.id || result.id });
     setStatus("");
   } catch (error) {
-    elements.videoView.hidden = true;
-    elements.detailsLoading.hidden = true;
-    setStatus(error.message || "Failed to load details.", "error");
+    renderDetails({
+      ...result,
+      id: result.id,
+      title: result.title,
+      channel: result.channel,
+      duration: result.duration || 0,
+      thumbnail: result.thumbnail,
+      url: result.url,
+      audioFormats: [],
+      videoFormats: [],
+      detailsWarning: "Download options could not be loaded right now. You can still play the video in the app.",
+    });
+    setStatus("Download options are unavailable right now.", "muted");
   }
 }
 
@@ -561,7 +598,7 @@ async function runSearch() {
     renderResults();
     elements.videoView.hidden = true;
     elements.heroEmpty.hidden = false;
-    elements.heroCopy.textContent = "Search for a video to get started.";
+    elements.heroCopy.textContent = "Paste a YouTube URL or type a title above. Results, previews, and download choices appear here.";
     setStatus(error.message || "Search failed.", "error");
   } finally {
     state.loading = false;
@@ -572,7 +609,7 @@ async function runSearch() {
 }
 
 async function loadMoreResults() {
-  if (state.loading || state.loadingMore || !state.currentQuery) {
+  if (state.loading || state.loadingMore || !state.currentQuery || state.currentPage >= MAX_SEARCH_PAGE) {
     return;
   }
 
@@ -654,7 +691,7 @@ async function pasteFromClipboard() {
     }
 
     elements.input.value = text;
-    elements.heroCopy.textContent = "Search for a video to get started.";
+    elements.heroCopy.textContent = "Paste a YouTube URL or type a title above. Results, previews, and download choices appear here.";
     state.suggestions = [];
     renderSuggestions();
     await runSearch();
@@ -669,6 +706,18 @@ elements.pasteButton.addEventListener("click", () => {
 
 elements.searchButton.addEventListener("click", () => {
   void runSearch();
+});
+
+elements.heroSettings?.addEventListener("click", () => {
+  elements.settingsPanel.hidden = false;
+});
+
+elements.settingsClose?.addEventListener("click", () => {
+  elements.settingsPanel.hidden = true;
+});
+
+document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+  button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
 });
 
 elements.input.addEventListener("keydown", (event) => {
@@ -721,7 +770,7 @@ elements.input.addEventListener("keydown", (event) => {
 });
 
 elements.input.addEventListener("input", () => {
-  elements.heroCopy.textContent = "Search for a video to get started.";
+  elements.heroCopy.textContent = "Paste a YouTube URL or type a title above. Results, previews, and download choices appear here.";
   state.activeSuggestionIndex = -1;
   clearTimeout(suggestTimer);
   suggestTimer = setTimeout(() => {
@@ -866,6 +915,8 @@ document.addEventListener("click", (event) => {
     renderSuggestions();
   }
 });
+
+setTheme(localStorage.getItem(THEME_STORAGE_KEY) || "emerald");
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {

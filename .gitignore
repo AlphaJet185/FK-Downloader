@@ -18,4 +18,5 @@ yt-api/package-lock.json
 .cloudflared/*.json
 .cloudflared/cert.pem
 .gradle-user/
+.gradle-build-home/
 .tmp/

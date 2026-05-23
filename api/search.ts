@@ -107,7 +107,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const rawPage = Array.isArray(req.query.page) ? req.query.page[0] : req.query.page;
   const page = Math.max(1, Number.parseInt(String(rawPage || '1'), 10) || 1);
-  const pageSize = 10;
+  const pageSize = 30;
   const offset = (page - 1) * pageSize;
 
   try {

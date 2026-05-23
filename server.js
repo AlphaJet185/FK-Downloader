@@ -779,7 +779,7 @@ app.get("/api/search", async (req, res) => {
   const q = typeof rawQuery === "string" ? rawQuery.trim() : "";
   const rawPage = firstArrayValue(req.query.page);
   const page = Math.max(1, Number.parseInt(String(rawPage || "1"), 10) || 1);
-  const pageSize = 10;
+  const pageSize = 30;
   const offset = (page - 1) * pageSize;
 
   if (!q) {
