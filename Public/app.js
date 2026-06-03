@@ -258,7 +258,7 @@ function buildPreviewUrl(url) {
 }
 
 function youtubeEmbedUrl(videoId) {
-  return `https://www.youtube.com/embed/${encodeURIComponent(
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(
     videoId
   )}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
 }
@@ -325,27 +325,14 @@ window.setInterval(() => {
 function resetDetailsPreview() {
   elements.detailsEmbed.removeAttribute("src");
   elements.detailsEmbed.hidden = true;
+  elements.detailsPreviewCard.classList.remove("is-loading");
   state.embedCurrentTime = 0;
   state.embedPlaying = false;
-
-  elements.detailsPlayer.pause();
-  elements.detailsPlayer.removeAttribute("src");
-  elements.detailsPlayer.load();
-  elements.detailsPlayer.hidden = true;
-  elements.videoSeek.value = "0";
-  elements.videoSeek.max = "100";
-  elements.videoTime.textContent = "0:00 / 0:00";
-  elements.videoPlayToggle.textContent = "▶";
-  elements.videoPlayToggle.classList.remove("is-playing");
-
-  elements.detailsAudioPlayer.pause();
-  elements.detailsAudioPlayer.removeAttribute("src");
-  elements.detailsAudioPlayer.load();
-  elements.detailsAudioPlayer.hidden = true;
 
   elements.detailsThumbnail.hidden = false;
   elements.detailsPreviewActions.hidden = true;
   elements.detailsPreviewActions.innerHTML = "";
+  elements.formatGroups.hidden = false;
   updatePreviewChromeVisibility();
 }
 
@@ -387,71 +374,12 @@ function getFormatCodecBadges(format) {
 }
 
 function playFormat(format) {
-  const previewUrl = buildPreviewUrl(format.url);
-  const mimeType = format.mimeType || "";
-  const isAudio = mimeType.startsWith("audio/");
-  const player = isAudio ? elements.detailsAudioPlayer : elements.detailsPlayer;
-  const otherPlayer = isAudio ? elements.detailsPlayer : elements.detailsAudioPlayer;
-
-  otherPlayer.pause();
-  otherPlayer.removeAttribute("src");
-  otherPlayer.load();
-  otherPlayer.hidden = true;
-
-  player.hidden = false;
-  player.src = previewUrl;
-  player.load();
-  void player.play().catch(() => {});
-  elements.detailsEmbed.hidden = true;
-  elements.detailsThumbnail.hidden = true;
-  updatePreviewChromeVisibility();
+  window.open(format.url, "_blank", "noopener");
 }
 
 function renderPreviewActions(details) {
   elements.detailsPreviewActions.innerHTML = "";
-  const bestAudio = details.audioFormats?.[0] || null;
-  const bestVideo = details.videoFormats?.[0] || null;
-
-  if (!bestAudio && !bestVideo) {
-    elements.detailsPreviewActions.hidden = true;
-    return;
-  }
-
-  const title = document.createElement("div");
-  title.className = "preview-actions-title";
-  title.textContent = "Quick downloads";
-  elements.detailsPreviewActions.appendChild(title);
-
-  const actions = document.createElement("div");
-  actions.className = "preview-actions-grid";
-
-  const createDownloadAction = (format, label, tone = "ghost") => {
-    if (!format?.url) {
-      return null;
-    }
-
-    const link = document.createElement("a");
-    link.className = `${tone === "primary" ? "primary-button" : "ghost-button"} preview-action-link`;
-    link.href = format.url;
-    link.download = "";
-    link.rel = "noopener";
-    link.innerHTML = `
-      <span>${label}</span>
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4"></path>
-      </svg>
-    `;
-    return link;
-  };
-
-  const audioButton = createDownloadAction(bestAudio, bestAudio.qualityLabel?.startsWith("MP3") ? bestAudio.qualityLabel : "Download MP3", "primary");
-  const videoButton = createDownloadAction(bestVideo, bestVideo.qualityLabel?.includes("p") ? `Download ${bestVideo.qualityLabel}` : "Download MP4");
-
-  if (audioButton) actions.appendChild(audioButton);
-  if (videoButton) actions.appendChild(videoButton);
-
-  elements.detailsPreviewActions.appendChild(actions);
-  elements.detailsPreviewActions.hidden = false;
+  elements.detailsPreviewActions.hidden = true;
 }
 
 function renderResults() {
@@ -557,14 +485,22 @@ function renderDetails(details) {
   elements.detailsChannel.textContent = details.channel || "";
   elements.detailsDuration.textContent = `Duration: ${formatDuration(details.duration)}`;
   resetDetailsPreview();
+  elements.detailsPreviewCard.classList.add("is-loading");
   elements.detailsEmbed.src = youtubeEmbedUrl(details.id || extractYouTubeVideoId(details.url || ""));
   elements.detailsEmbed.hidden = false;
-  elements.detailsEmbed.addEventListener("load", syncEmbedListening, { once: true });
+  elements.detailsEmbed.addEventListener(
+    "load",
+    () => {
+      elements.detailsPreviewCard.classList.remove("is-loading");
+      syncEmbedListening();
+    },
+    { once: true },
+  );
   elements.detailsThumbnail.hidden = true;
   elements.detailsThumbnail.src = details.thumbnail || "";
   elements.detailsThumbnail.alt = details.title || "Video thumbnail";
-  renderPreviewActions(details);
   elements.formatGroups.innerHTML = "";
+  elements.formatGroups.hidden = false;
   updatePreviewChromeVisibility();
 
   if (details.detailsWarning) {
@@ -572,6 +508,7 @@ function renderDetails(details) {
     warning.className = "details-warning";
     warning.textContent = details.detailsWarning;
     elements.formatGroups.appendChild(warning);
+    elements.formatGroups.hidden = false;
     return;
   }
 
@@ -947,13 +884,8 @@ function syncVideoControls() {
 }
 
 function updatePreviewChromeVisibility() {
-  const usingEmbed = !elements.detailsEmbed.hidden;
-  const usingVideo = !elements.detailsPlayer.hidden;
-  const usingAudio = !elements.detailsAudioPlayer.hidden;
-  const showCustomChrome = usingVideo && !usingEmbed && !usingAudio;
-
-  elements.videoControls.hidden = !showCustomChrome;
-  elements.videoFullscreen.hidden = !showCustomChrome;
+  if (elements.videoControls) elements.videoControls.hidden = true;
+  if (elements.videoFullscreen) elements.videoFullscreen.hidden = true;
 }
 
 elements.videoPlayToggle.addEventListener("click", () => {

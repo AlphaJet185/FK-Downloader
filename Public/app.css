@@ -859,6 +859,32 @@ body.settings-open .settings-panel {
   background: rgba(7, 10, 11, 0.9);
 }
 
+.details-preview-card.is-loading::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: rgba(5, 7, 8, 0.58);
+}
+
+.details-preview-card.is-loading::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 4;
+  width: 56px;
+  height: 56px;
+  margin-top: -38px;
+  margin-left: -28px;
+  border: 4px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  border-top-color: color-mix(in srgb, var(--accent) 92%, white);
+  border-right-color: color-mix(in srgb, var(--accent) 48%, white);
+  border-radius: 999px;
+  box-shadow: 0 0 30px color-mix(in srgb, var(--accent) 10%, transparent);
+  animation: spin 0.9s linear infinite;
+}
+
 .details-preview-card img,
 .details-preview-card video,
 .details-preview-card iframe {
