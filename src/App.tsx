@@ -157,6 +157,20 @@ const THEME_OPTIONS: Array<{ id: ThemeChoice; label: string; swatch: string; roo
   }
 ];
 
+function getPlayerPrimaryButtonClass(themeChoice: ThemeChoice) {
+  switch (themeChoice) {
+    case 'ocean':
+      return 'bg-cyan-400 text-slate-950 hover:bg-cyan-300';
+    case 'violet':
+      return 'bg-violet-400 text-slate-950 hover:bg-violet-300';
+    case 'sunset':
+      return 'bg-orange-400 text-slate-950 hover:bg-orange-300';
+    case 'emerald':
+    default:
+      return 'bg-emerald-500 text-zinc-950 hover:bg-emerald-400';
+  }
+}
+
 function formatDuration(seconds: number) {
   const safeSeconds = Math.max(0, Math.floor(seconds || 0));
   const hours = Math.floor(safeSeconds / 3600);
@@ -500,6 +514,11 @@ export default function App() {
   const [savedPreviewCurrentTime, setSavedPreviewCurrentTime] = useState(0);
   const [savedPreviewDuration, setSavedPreviewDuration] = useState(0);
   const activeTheme = THEME_OPTIONS.find((option) => option.id === themeChoice) || THEME_OPTIONS[0];
+  const playerPrimaryButtonClass = getPlayerPrimaryButtonClass(themeChoice);
+  const playerSecondaryButtonClass =
+    'inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35';
+  const playerMiniNavButtonClass =
+    'inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40';
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -2825,7 +2844,7 @@ export default function App() {
                         type="button"
                         onClick={handlePreviousSavedDownload}
                         disabled={!previousSavedDownload}
-                        className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
+                        className={playerSecondaryButtonClass}
                         aria-label="Previous saved preview"
                       >
                         Prev
@@ -2834,7 +2853,7 @@ export default function App() {
                         type="button"
                         onClick={() => void toggleSavedPreviewPlayback()}
                         disabled={isSavedPreviewLoading}
-                        className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
+                        className={`inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg px-4 text-sm font-bold transition-colors disabled:cursor-wait disabled:opacity-80 ${playerPrimaryButtonClass}`}
                         aria-label={isSavedPreviewPlaying ? 'Pause saved preview' : 'Play saved preview'}
                       >
                         {isSavedPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : isSavedPreviewPlaying ? 'Pause' : 'Play'}
@@ -3276,7 +3295,7 @@ export default function App() {
                           type="button"
                           onClick={handlePreviousVideo}
                           disabled={!previousVideo}
-                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
+                          className={playerSecondaryButtonClass}
                           aria-label="Previous preview"
                         >
                           Prev
@@ -3284,7 +3303,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => jumpPreviewBy(-10)}
-                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
+                          className={playerSecondaryButtonClass}
                           aria-label="Back 10 seconds"
                         >
                           -10s
@@ -3293,7 +3312,7 @@ export default function App() {
                           type="button"
                           onClick={() => void togglePreviewPlayback()}
                           disabled={isPreviewLoading}
-                          className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400 disabled:cursor-wait disabled:opacity-80"
+                          className={`inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg px-4 text-sm font-bold transition-colors disabled:cursor-wait disabled:opacity-80 ${playerPrimaryButtonClass}`}
                           aria-label={isPreviewPlaying ? 'Pause preview' : 'Play preview'}
                         >
                           {isPreviewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : isPreviewPlaying ? 'Pause' : 'Play'}
@@ -3301,7 +3320,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => jumpPreviewBy(10)}
-                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
+                          className={playerSecondaryButtonClass}
                           aria-label="Forward 10 seconds"
                         >
                           +10s
@@ -3310,7 +3329,7 @@ export default function App() {
                           type="button"
                           onClick={handleNextVideo}
                           disabled={!nextVideo}
-                          className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
+                          className={playerSecondaryButtonClass}
                           aria-label="Next preview"
                         >
                           Next
@@ -3347,7 +3366,7 @@ export default function App() {
                               type="button"
                               onClick={handlePreviousVideo}
                               disabled={!previousVideo}
-                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
+                              className={playerSecondaryButtonClass}
                               aria-label="Previous video"
                             >
                               Prev
@@ -3355,7 +3374,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => jumpEmbedBy(-10)}
-                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
+                              className={playerSecondaryButtonClass}
                               aria-label="Back 10 seconds"
                             >
                               -10s
@@ -3363,7 +3382,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={toggleEmbedPlayback}
-                              className="inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg bg-emerald-500 px-4 text-sm font-bold text-zinc-950 transition-colors hover:bg-emerald-400"
+                              className={`inline-flex min-h-[40px] min-w-[86px] items-center justify-center rounded-lg px-4 text-sm font-bold transition-colors ${playerPrimaryButtonClass}`}
                               aria-label={isEmbedPlaying ? 'Pause video' : 'Play video'}
                             >
                               {isEmbedPlaying ? 'Pause' : 'Play'}
@@ -3371,7 +3390,7 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => jumpEmbedBy(10)}
-                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800"
+                              className={playerSecondaryButtonClass}
                               aria-label="Forward 10 seconds"
                             >
                               +10s
@@ -3380,7 +3399,7 @@ export default function App() {
                               type="button"
                               onClick={handleNextVideo}
                               disabled={!nextVideo}
-                              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-zinc-700 bg-zinc-950 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-35"
+                              className={playerSecondaryButtonClass}
                               aria-label="Next video"
                             >
                               Next
@@ -3410,7 +3429,7 @@ export default function App() {
                     type="button"
                     onClick={handlePreviousVideo}
                     disabled={!previousVideo}
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={playerMiniNavButtonClass}
                   >
                     <ChevronLeft className="h-3.5 w-3.5" />
                     Prev
@@ -3419,7 +3438,7 @@ export default function App() {
                     type="button"
                     onClick={handleNextVideo}
                     disabled={!nextVideo}
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    className={playerMiniNavButtonClass}
                   >
                     Next
                     <ChevronRight className="h-3.5 w-3.5" />

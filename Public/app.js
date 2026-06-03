@@ -20,6 +20,14 @@ const elements = {
   heroSettings: document.querySelector(".hero-settings"),
   settingsPanel: document.getElementById("settings-panel"),
   settingsClose: document.getElementById("settings-close"),
+  customAccentInput: document.getElementById("custom-accent-input"),
+  customAccentValue: document.getElementById("custom-accent-value"),
+  customAccentClear: document.getElementById("custom-accent-clear"),
+  openSearchButton: document.getElementById("open-search-button"),
+  openSavedButton: document.getElementById("open-saved-button"),
+  feedbackButton: document.getElementById("feedback-button"),
+  changeLocationButton: document.getElementById("change-location-button"),
+  saveLocationText: document.getElementById("save-location-text"),
   recognizeButton: document.getElementById("recognize-button"),
   suggestions: document.getElementById("suggestions"),
   heroEmpty: document.getElementById("hero-empty"),
@@ -59,18 +67,109 @@ const SEARCH_MORE_LABEL = "Search more";
 const SEARCH_PAGE_SIZE = 30;
 const MAX_SEARCH_PAGE = 3;
 const THEME_STORAGE_KEY = "fk-downloader-theme";
+const CUSTOM_ACCENT_STORAGE_KEY = "fk-downloader-custom-accent";
+const DEFAULT_THEME = "rose";
+const THEME_CHOICES = ["rose", "coral", "orchid", "violet", "sky", "cobalt", "amber", "sunset"];
+
+function normalizeHexColor(value) {
+  const hex = String(value || "").trim().replace(/^#/, "");
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    return `#${hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("")
+      .toLowerCase()}`;
+  }
+
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return `#${hex.toLowerCase()}`;
+  }
+
+  return "";
+}
+
+function hexToRgba(hex, alpha) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) {
+    return "";
+  }
+
+  const r = Number.parseInt(normalized.slice(1, 3), 16);
+  const g = Number.parseInt(normalized.slice(3, 5), 16);
+  const b = Number.parseInt(normalized.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 function buttonLoadingMarkup(label) {
   return `<span class="button-loader" aria-hidden="true"></span><span>${label}</span>`;
 }
 
 function setTheme(theme) {
-  const nextTheme = ["emerald", "ocean", "violet", "sunset"].includes(theme) ? theme : "emerald";
+  const nextTheme = THEME_CHOICES.includes(theme) ? theme : DEFAULT_THEME;
   document.body.dataset.theme = nextTheme;
   localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   document.querySelectorAll("[data-theme-choice]").forEach((button) => {
     button.classList.toggle("is-active", button.dataset.themeChoice === nextTheme);
   });
+  syncCustomAccent();
+}
+
+function syncCustomAccent() {
+  const customAccent = normalizeHexColor(localStorage.getItem(CUSTOM_ACCENT_STORAGE_KEY));
+  if (customAccent) {
+    document.body.style.setProperty("--accent", customAccent);
+    document.body.style.setProperty("--border", hexToRgba(customAccent, 0.28));
+    if (elements.customAccentInput) {
+      elements.customAccentInput.value = customAccent;
+    }
+    if (elements.customAccentValue) {
+      elements.customAccentValue.textContent = customAccent;
+    }
+    return;
+  }
+
+  document.body.style.removeProperty("--accent");
+  document.body.style.removeProperty("--border");
+  if (elements.customAccentInput) {
+    elements.customAccentInput.value = normalizeHexColor("#f472b6");
+  }
+  if (elements.customAccentValue) {
+    elements.customAccentValue.textContent = "#f472b6";
+  }
+}
+
+function setCustomAccent(value) {
+  const nextAccent = normalizeHexColor(value);
+  if (!nextAccent) {
+    return;
+  }
+
+  localStorage.setItem(CUSTOM_ACCENT_STORAGE_KEY, nextAccent);
+  syncCustomAccent();
+}
+
+function clearCustomAccent() {
+  localStorage.removeItem(CUSTOM_ACCENT_STORAGE_KEY);
+  syncCustomAccent();
+}
+
+function openSettings() {
+  elements.settingsPanel.hidden = false;
+  document.body.classList.add("settings-open");
+}
+
+function closeSettings() {
+  elements.settingsPanel.hidden = true;
+  document.body.classList.remove("settings-open");
+}
+
+function updateSavedLocationText() {
+  if (!elements.saveLocationText) {
+    return;
+  }
+
+  const storedPath = localStorage.getItem("fk-saved-folder-path") || "";
+  elements.saveLocationText.textContent = storedPath || "No folder selected yet. Desktop downloads will prompt the first time.";
 }
 
 function formatDuration(totalSeconds) {
@@ -212,7 +311,7 @@ window.addEventListener("message", (event) => {
   if (typeof payload.info.playerState === "number") {
     state.embedPlaying = payload.info.playerState === 1;
     elements.videoPlayToggle.classList.toggle("is-playing", state.embedPlaying);
-    elements.videoPlayToggle.textContent = state.embedPlaying ? "Pause" : "Play";
+    elements.videoPlayToggle.textContent = state.embedPlaying ? "❚❚" : "▶";
   }
 });
 
@@ -233,11 +332,10 @@ function resetDetailsPreview() {
   elements.detailsPlayer.removeAttribute("src");
   elements.detailsPlayer.load();
   elements.detailsPlayer.hidden = true;
-  elements.videoControls.hidden = true;
   elements.videoSeek.value = "0";
   elements.videoSeek.max = "100";
   elements.videoTime.textContent = "0:00 / 0:00";
-  elements.videoPlayToggle.textContent = "Play";
+  elements.videoPlayToggle.textContent = "▶";
   elements.videoPlayToggle.classList.remove("is-playing");
 
   elements.detailsAudioPlayer.pause();
@@ -248,6 +346,7 @@ function resetDetailsPreview() {
   elements.detailsThumbnail.hidden = false;
   elements.detailsPreviewActions.hidden = true;
   elements.detailsPreviewActions.innerHTML = "";
+  updatePreviewChromeVisibility();
 }
 
 function createActionButton(label, className, onClick) {
@@ -305,51 +404,53 @@ function playFormat(format) {
   void player.play().catch(() => {});
   elements.detailsEmbed.hidden = true;
   elements.detailsThumbnail.hidden = true;
-  elements.videoControls.hidden = isAudio;
+  updatePreviewChromeVisibility();
 }
 
 function renderPreviewActions(details) {
   elements.detailsPreviewActions.innerHTML = "";
+  const bestAudio = details.audioFormats?.[0] || null;
+  const bestVideo = details.videoFormats?.[0] || null;
 
-  if (details.previewUrl) {
-    const previewButton = createActionButton(
-      "Play preview",
-      "primary-button preview-action",
-      () => {
-        elements.detailsAudioPlayer.pause();
-        elements.detailsAudioPlayer.removeAttribute("src");
-        elements.detailsAudioPlayer.load();
-        elements.detailsAudioPlayer.hidden = true;
-        elements.detailsEmbed.hidden = true;
-        elements.detailsPlayer.hidden = false;
-        elements.detailsPlayer.src = details.previewUrl;
-        elements.detailsPlayer.load();
-        void elements.detailsPlayer.play().catch(() => {});
-        elements.detailsThumbnail.hidden = true;
-        elements.videoControls.hidden = false;
-      },
-    );
-    elements.detailsPreviewActions.appendChild(previewButton);
+  if (!bestAudio && !bestVideo) {
+    elements.detailsPreviewActions.hidden = true;
+    return;
   }
 
-  const thumbnailButton = createActionButton(
-    "Show thumbnail",
-    "ghost-button preview-action",
-    () => {
-      elements.detailsPlayer.pause();
-      elements.detailsPlayer.removeAttribute("src");
-      elements.detailsPlayer.load();
-      elements.detailsPlayer.hidden = true;
-      elements.videoControls.hidden = true;
-      elements.detailsEmbed.hidden = true;
-      elements.detailsAudioPlayer.pause();
-      elements.detailsAudioPlayer.removeAttribute("src");
-      elements.detailsAudioPlayer.load();
-      elements.detailsAudioPlayer.hidden = true;
-      elements.detailsThumbnail.hidden = false;
-    },
-  );
-  elements.detailsPreviewActions.appendChild(thumbnailButton);
+  const title = document.createElement("div");
+  title.className = "preview-actions-title";
+  title.textContent = "Quick downloads";
+  elements.detailsPreviewActions.appendChild(title);
+
+  const actions = document.createElement("div");
+  actions.className = "preview-actions-grid";
+
+  const createDownloadAction = (format, label, tone = "ghost") => {
+    if (!format?.url) {
+      return null;
+    }
+
+    const link = document.createElement("a");
+    link.className = `${tone === "primary" ? "primary-button" : "ghost-button"} preview-action-link`;
+    link.href = format.url;
+    link.download = "";
+    link.rel = "noopener";
+    link.innerHTML = `
+      <span>${label}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4"></path>
+      </svg>
+    `;
+    return link;
+  };
+
+  const audioButton = createDownloadAction(bestAudio, bestAudio.qualityLabel?.startsWith("MP3") ? bestAudio.qualityLabel : "Download MP3", "primary");
+  const videoButton = createDownloadAction(bestVideo, bestVideo.qualityLabel?.includes("p") ? `Download ${bestVideo.qualityLabel}` : "Download MP4");
+
+  if (audioButton) actions.appendChild(audioButton);
+  if (videoButton) actions.appendChild(videoButton);
+
+  elements.detailsPreviewActions.appendChild(actions);
   elements.detailsPreviewActions.hidden = false;
 }
 
@@ -426,6 +527,8 @@ function renderFormats(label, formats) {
     const downloadLink = document.createElement("a");
     downloadLink.className = "primary-button format-action";
     downloadLink.href = format.url;
+    downloadLink.download = "";
+    downloadLink.rel = "noopener";
     downloadLink.innerHTML = `
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M12 3v11m0 0l-4-4m4 4l4-4M5 19h14" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4"></path>
@@ -457,12 +560,12 @@ function renderDetails(details) {
   elements.detailsEmbed.src = youtubeEmbedUrl(details.id || extractYouTubeVideoId(details.url || ""));
   elements.detailsEmbed.hidden = false;
   elements.detailsEmbed.addEventListener("load", syncEmbedListening, { once: true });
-  elements.videoControls.hidden = false;
   elements.detailsThumbnail.hidden = true;
   elements.detailsThumbnail.src = details.thumbnail || "";
   elements.detailsThumbnail.alt = details.title || "Video thumbnail";
   renderPreviewActions(details);
   elements.formatGroups.innerHTML = "";
+  updatePreviewChromeVisibility();
 
   if (details.detailsWarning) {
     const warning = document.createElement("div");
@@ -709,15 +812,48 @@ elements.searchButton.addEventListener("click", () => {
 });
 
 elements.heroSettings?.addEventListener("click", () => {
-  elements.settingsPanel.hidden = false;
+  openSettings();
 });
 
 elements.settingsClose?.addEventListener("click", () => {
-  elements.settingsPanel.hidden = true;
+  closeSettings();
 });
 
 document.querySelectorAll("[data-theme-choice]").forEach((button) => {
   button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
+});
+
+elements.customAccentInput?.addEventListener("input", () => {
+  setCustomAccent(elements.customAccentInput.value);
+});
+
+elements.customAccentClear?.addEventListener("click", () => {
+  clearCustomAccent();
+});
+
+elements.openSearchButton?.addEventListener("click", () => {
+  closeSettings();
+  elements.input.focus();
+});
+
+elements.openSavedButton?.addEventListener("click", () => {
+  closeSettings();
+  setStatus("Open the saved files section on the main page.");
+});
+
+elements.feedbackButton?.addEventListener("click", () => {
+  closeSettings();
+  setStatus("Feedback is handled from the main page in this static client.", "muted");
+});
+
+elements.changeLocationButton?.addEventListener("click", () => {
+  const nextPath = window.prompt("Enter a save folder path", localStorage.getItem("fk-saved-folder-path") || "");
+  if (nextPath === null) {
+    return;
+  }
+
+  localStorage.setItem("fk-saved-folder-path", nextPath.trim());
+  updateSavedLocationText();
 });
 
 elements.input.addEventListener("keydown", (event) => {
@@ -791,7 +927,7 @@ function syncVideoControls() {
     elements.videoSeek.max = "100";
     elements.videoSeek.value = "0";
     elements.videoTime.textContent = "";
-    elements.videoPlayToggle.textContent = state.embedPlaying ? "Pause" : "Play";
+    elements.videoPlayToggle.textContent = state.embedPlaying ? "❚❚" : "▶";
     elements.videoPlayToggle.classList.toggle("is-playing", state.embedPlaying);
     return;
   }
@@ -806,8 +942,18 @@ function syncVideoControls() {
   elements.videoSeek.max = String(duration || 100);
   elements.videoSeek.value = String(Math.min(currentTime, duration || currentTime || 0));
   elements.videoTime.textContent = `${formatPlaybackTime(currentTime)} / ${formatPlaybackTime(duration)}`;
-  elements.videoPlayToggle.textContent = elements.detailsPlayer.paused ? "Play" : "Pause";
+  elements.videoPlayToggle.textContent = elements.detailsPlayer.paused ? "▶" : "❚❚";
   elements.videoPlayToggle.classList.toggle("is-playing", !elements.detailsPlayer.paused);
+}
+
+function updatePreviewChromeVisibility() {
+  const usingEmbed = !elements.detailsEmbed.hidden;
+  const usingVideo = !elements.detailsPlayer.hidden;
+  const usingAudio = !elements.detailsAudioPlayer.hidden;
+  const showCustomChrome = usingVideo && !usingEmbed && !usingAudio;
+
+  elements.videoControls.hidden = !showCustomChrome;
+  elements.videoFullscreen.hidden = !showCustomChrome;
 }
 
 elements.videoPlayToggle.addEventListener("click", () => {
@@ -883,7 +1029,7 @@ elements.videoSeek.addEventListener("input", () => {
 });
 
 elements.videoFullscreen.addEventListener("click", async () => {
-  const target = elements.detailsPreviewCard;
+  const target = !elements.detailsEmbed.hidden ? elements.detailsEmbed : elements.detailsPreviewCard;
   if (!document.fullscreenElement) {
     await target.requestFullscreen?.().catch(() => {});
     return;
@@ -916,7 +1062,9 @@ document.addEventListener("click", (event) => {
   }
 });
 
-setTheme(localStorage.getItem(THEME_STORAGE_KEY) || "emerald");
+setTheme(localStorage.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME);
+updateSavedLocationText();
+closeSettings();
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
