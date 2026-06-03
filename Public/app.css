@@ -349,6 +349,28 @@ body.settings-open .settings-panel {
   font-weight: 700;
 }
 
+.background-color-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.background-color-input {
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+
+.background-color-input::placeholder {
+  color: var(--muted);
+}
+
 .topbar,
 .content {
   max-width: 1440px;
@@ -898,6 +920,30 @@ body.settings-open .settings-panel {
   aspect-ratio: 16 / 9;
   border: 0;
   background: #080b0a;
+}
+
+.preview-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  background: rgba(5, 7, 8, 0.58);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.preview-loading .loader-ring {
+  width: 48px;
+  height: 48px;
+}
+
+.video-controls,
+.video-fullscreen-button,
+.details-preview-actions {
+  display: none !important;
 }
 
 .video-controls {

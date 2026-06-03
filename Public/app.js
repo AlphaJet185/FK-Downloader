@@ -20,6 +20,9 @@ const elements = {
   heroSettings: document.querySelector(".hero-settings"),
   settingsPanel: document.getElementById("settings-panel"),
   settingsClose: document.getElementById("settings-close"),
+  backgroundColorInput: document.getElementById("background-color-input"),
+  backgroundColorApply: document.getElementById("background-color-apply"),
+  backgroundColorReset: document.getElementById("background-color-reset"),
   customAccentInput: document.getElementById("custom-accent-input"),
   customAccentValue: document.getElementById("custom-accent-value"),
   customAccentClear: document.getElementById("custom-accent-clear"),
@@ -44,6 +47,7 @@ const elements = {
   detailsChannel: document.getElementById("details-channel"),
   detailsDuration: document.getElementById("details-duration"),
   detailsEmbed: document.getElementById("details-embed"),
+  previewLoading: document.getElementById("preview-loading"),
   detailsPlayer: document.getElementById("details-player"),
   detailsAudioPlayer: document.getElementById("details-audio-player"),
   detailsPreviewCard: document.getElementById("details-preview-card"),
@@ -62,12 +66,15 @@ const elements = {
 };
 
 let suggestTimer = null;
+let previewLoadTimer = null;
 const SEARCH_BUTTON_LABEL = "Search";
 const SEARCH_MORE_LABEL = "Search more";
 const SEARCH_PAGE_SIZE = 30;
 const MAX_SEARCH_PAGE = 3;
 const THEME_STORAGE_KEY = "fk-downloader-theme";
 const CUSTOM_ACCENT_STORAGE_KEY = "fk-downloader-custom-accent";
+const BACKGROUND_STORAGE_KEY = "fk-downloader-background";
+const DEFAULT_BACKGROUND = "#071816";
 const DEFAULT_THEME = "rose";
 const THEME_CHOICES = ["rose", "coral", "orchid", "violet", "sky", "cobalt", "amber", "sunset"];
 
@@ -98,6 +105,21 @@ function hexToRgba(hex, alpha) {
   const g = Number.parseInt(normalized.slice(3, 5), 16);
   const b = Number.parseInt(normalized.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function resolveCssColor(value) {
+  const probe = document.createElement("span");
+  probe.style.color = "";
+  probe.style.color = String(value || "").trim();
+  if (!probe.style.color) {
+    return "";
+  }
+
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved || "";
 }
 
 function buttonLoadingMarkup(label) {
@@ -151,6 +173,43 @@ function setCustomAccent(value) {
 function clearCustomAccent() {
   localStorage.removeItem(CUSTOM_ACCENT_STORAGE_KEY);
   syncCustomAccent();
+}
+
+function applyBackgroundColor(value) {
+  const resolved = resolveCssColor(value);
+  if (!resolved) {
+    return false;
+  }
+
+  const inputValue = String(value || "").trim();
+  localStorage.setItem(BACKGROUND_STORAGE_KEY, inputValue);
+  document.body.style.setProperty("--bg", `color-mix(in srgb, ${resolved} 18%, #050708)`);
+  document.body.style.setProperty("--border", `color-mix(in srgb, ${resolved} 26%, transparent)`);
+  document.body.style.setProperty("--surface", `color-mix(in srgb, #111112 88%, ${resolved})`);
+  document.body.style.setProperty("--surface-2", `color-mix(in srgb, #141416 84%, ${resolved})`);
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) {
+    themeColor.setAttribute("content", resolved);
+  }
+  if (elements.backgroundColorInput) {
+    elements.backgroundColorInput.value = inputValue;
+  }
+  return true;
+}
+
+function resetBackgroundColor() {
+  localStorage.removeItem(BACKGROUND_STORAGE_KEY);
+  document.body.style.removeProperty("--bg");
+  document.body.style.removeProperty("--border");
+  document.body.style.removeProperty("--surface");
+  document.body.style.removeProperty("--surface-2");
+  const themeColor = document.querySelector('meta[name="theme-color"]');
+  if (themeColor) {
+    themeColor.setAttribute("content", DEFAULT_BACKGROUND);
+  }
+  if (elements.backgroundColorInput) {
+    elements.backgroundColorInput.value = DEFAULT_BACKGROUND;
+  }
 }
 
 function openSettings() {
@@ -258,7 +317,7 @@ function buildPreviewUrl(url) {
 }
 
 function youtubeEmbedUrl(videoId) {
-  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(
+  return `https://www.youtube.com/embed/${encodeURIComponent(
     videoId
   )}?rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
 }
@@ -323,9 +382,17 @@ window.setInterval(() => {
 }, 1000);
 
 function resetDetailsPreview() {
+  clearTimeout(previewLoadTimer);
+  previewLoadTimer = null;
   elements.detailsEmbed.removeAttribute("src");
   elements.detailsEmbed.hidden = true;
-  elements.detailsPreviewCard.classList.remove("is-loading");
+  if (elements.previewLoading) {
+    elements.previewLoading.hidden = true;
+    const label = elements.previewLoading.querySelector("span");
+    if (label) {
+      label.textContent = "Loading from YouTube...";
+    }
+  }
   state.embedCurrentTime = 0;
   state.embedPlaying = false;
 
@@ -485,18 +552,32 @@ function renderDetails(details) {
   elements.detailsChannel.textContent = details.channel || "";
   elements.detailsDuration.textContent = `Duration: ${formatDuration(details.duration)}`;
   resetDetailsPreview();
-  elements.detailsPreviewCard.classList.add("is-loading");
+  if (elements.previewLoading) {
+    elements.previewLoading.hidden = false;
+  }
   elements.detailsEmbed.src = youtubeEmbedUrl(details.id || extractYouTubeVideoId(details.url || ""));
-  elements.detailsEmbed.hidden = false;
-  elements.detailsEmbed.addEventListener(
-    "load",
-    () => {
-      elements.detailsPreviewCard.classList.remove("is-loading");
-      syncEmbedListening();
-    },
-    { once: true },
-  );
-  elements.detailsThumbnail.hidden = true;
+  elements.detailsEmbed.hidden = true;
+  elements.detailsEmbed.addEventListener("load", () => {
+    if (elements.previewLoading) {
+      elements.previewLoading.hidden = true;
+    }
+    clearTimeout(previewLoadTimer);
+    previewLoadTimer = null;
+    elements.detailsEmbed.hidden = false;
+    elements.detailsThumbnail.hidden = true;
+    syncEmbedListening();
+  }, { once: true });
+  clearTimeout(previewLoadTimer);
+  previewLoadTimer = window.setTimeout(() => {
+    if (elements.previewLoading) {
+      elements.previewLoading.hidden = false;
+      const label = elements.previewLoading.querySelector("span");
+      if (label) {
+        label.textContent = "Still loading from YouTube...";
+      }
+    }
+  }, 12000);
+  elements.detailsThumbnail.hidden = false;
   elements.detailsThumbnail.src = details.thumbnail || "";
   elements.detailsThumbnail.alt = details.title || "Video thumbnail";
   elements.formatGroups.innerHTML = "";
@@ -518,6 +599,30 @@ function renderDetails(details) {
 
   if (details.audioFormats?.length) {
     elements.formatGroups.appendChild(renderFormats("Audio", details.audioFormats));
+  }
+
+  if (!details.videoFormats?.length && !details.audioFormats?.length) {
+    const fallbackGroup = document.createElement("section");
+    fallbackGroup.className = "format-group";
+    fallbackGroup.innerHTML = `<h3>Download</h3>`;
+    const baseUrl = details.url || "";
+    fallbackGroup.appendChild(renderFormats("Video", [{
+      qualityLabel: "MP4",
+      contentLength: "Unknown",
+      mimeType: "video/mp4",
+      hasVideo: true,
+      hasAudio: true,
+      url: `/api/download?url=${encodeURIComponent(baseUrl)}&type=video`,
+    }]));
+    fallbackGroup.appendChild(renderFormats("Audio", [{
+      qualityLabel: "MP3",
+      contentLength: "Unknown",
+      mimeType: "audio/mp3",
+      hasVideo: false,
+      hasAudio: true,
+      url: `/api/download?url=${encodeURIComponent(baseUrl)}&type=audio&audioFormat=mp3`,
+    }]));
+    elements.formatGroups.appendChild(fallbackGroup);
   }
 }
 
@@ -760,6 +865,27 @@ document.querySelectorAll("[data-theme-choice]").forEach((button) => {
   button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
 });
 
+elements.backgroundColorApply?.addEventListener("click", () => {
+  const value = elements.backgroundColorInput?.value || "";
+  if (!applyBackgroundColor(value)) {
+    setStatus("Enter a valid CSS color, hex, or rgb value.", "error");
+  } else {
+    setStatus("Background updated.", "success");
+  }
+});
+
+elements.backgroundColorReset?.addEventListener("click", () => {
+  resetBackgroundColor();
+  setStatus("Background reset.", "success");
+});
+
+elements.backgroundColorInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    elements.backgroundColorApply?.click();
+  }
+});
+
 elements.customAccentInput?.addEventListener("input", () => {
   setCustomAccent(elements.customAccentInput.value);
 });
@@ -995,6 +1121,7 @@ document.addEventListener("click", (event) => {
 });
 
 setTheme(localStorage.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME);
+applyBackgroundColor(localStorage.getItem(BACKGROUND_STORAGE_KEY) || DEFAULT_BACKGROUND);
 updateSavedLocationText();
 closeSettings();
 
